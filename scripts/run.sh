@@ -3,7 +3,7 @@
 set -euo pipefail
 
 if [[ "$OSTYPE" == "win32" ]] || [[ "$OSTYPE" == "msys" ]]; then
-    ./install/"$DEV_BUILD_TYPE"/bin/VkToyApp.exe
+    ./install/"$DEV_BUILD_TYPE"/bin/VkCloudsApp.exe
 else
-    ./install/"$DEV_BUILD_TYPE"/bin/VkToyApp
+    ./install/"$DEV_BUILD_TYPE"/bin/VkCloudsApp
 fi

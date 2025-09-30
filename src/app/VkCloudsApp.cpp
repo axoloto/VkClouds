@@ -153,7 +153,13 @@ struct UniformBufferObject
   alignas(16) glm::mat4 proj;
 };
 
-VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger)
+struct ComputeUniformBufferObject
+{
+  float deltaTime;
+};
+
+VkResult
+CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger)
 {
   auto func = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
   if (func != nullptr)
@@ -184,7 +190,7 @@ static void check_vk_result(VkResult err)
     abort();
 }
 
-class HelloTriangleApplication
+class VkCloudsApp
 {
   public:
   void run()
@@ -273,6 +279,9 @@ class HelloTriangleApplication
   std::vector<VkCommandBuffer> computeCommandBuffers;
   std::vector<VkFence> computeInFlightFences;
   std::vector<VkSemaphore> computeFinishedSemaphores;
+  std::vector<VkBuffer> computeUniformBuffers;
+  std::vector<VkDeviceMemory> computeUniformBuffersMemory;
+  std::vector<void*> computeUniformBuffersMapped;
 
   bool framebufferResized = false;
 
@@ -290,7 +299,7 @@ class HelloTriangleApplication
 
   static void framebufferResizeCallback(GLFWwindow* window, int width, int height)
   {
-    auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
+    auto app = reinterpret_cast<VkCloudsApp*>(glfwGetWindowUserPointer(window));
     app->framebufferResized = true;
   }
 
@@ -1879,6 +1888,20 @@ class HelloTriangleApplication
       // persistent mapping for perf optimization as we reused it
       vkMapMemory(device, uniformBuffersMemory[i], 0, bufferSize, 0, &uniformBuffersMapped[i]);
     }
+
+    VkDeviceSize computeBufferSize = sizeof(ComputeUniformBufferObject);
+
+    computeUniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+    computeUniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
+    computeUniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
+
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+    {
+      createBuffer(computeBufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, computeUniformBuffers[i], computeUniformBuffersMemory[i]);
+
+      // persistent mapping for perf optimization as we reused it
+      vkMapMemory(device, computeUniformBuffersMemory[i], 0, computeBufferSize, 0, &computeUniformBuffersMapped[i]);
+    }
   }
 
   void createShaderStorageBuffers()
@@ -2014,9 +2037,9 @@ class HelloTriangleApplication
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
     {
       VkDescriptorBufferInfo bufferInfo {};
-      bufferInfo.buffer = uniformBuffers[i];
+      bufferInfo.buffer = computeUniformBuffers[i];
       bufferInfo.offset = 0;
-      bufferInfo.range = sizeof(UniformBufferObject);
+      bufferInfo.range = sizeof(ComputeUniformBufferObject);
 
       VkDescriptorBufferInfo storageBufferInfoLastFrame {};
       storageBufferInfoLastFrame.buffer = shaderStorageBuffers[(i - 1) % MAX_FRAMES_IN_FLIGHT];
@@ -2380,7 +2403,7 @@ class HelloTriangleApplication
     {
       glfwPollEvents();
 
-      renderDearImGui();
+      renderUI();
 
       drawFrame();
     }
@@ -2388,7 +2411,7 @@ class HelloTriangleApplication
     vkDeviceWaitIdle(device);
   }
 
-  void renderDearImGui()
+  void renderUI()
   {
     // Start the Dear ImGui frame and render UI items in DearImGui
     // Note that real drawing is embedded with ours and will happen later
@@ -2431,6 +2454,7 @@ class HelloTriangleApplication
     vkWaitForFences(device, 1, &computeInFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
 
     updateUniformBuffer(currentFrame);
+    updateComputeUniformBuffer(currentFrame);
 
     vkResetFences(device, 1, &computeInFlightFences[currentFrame]);
 
@@ -2514,6 +2538,14 @@ class HelloTriangleApplication
     memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
   }
 
+  void updateComputeUniformBuffer(uint32_t currentImage)
+  {
+    ComputeUniformBufferObject ubo {};
+    ubo.deltaTime = 0.001f;
+
+    memcpy(computeUniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
+  }
+
   void cleanup()
   {
     ImGui_ImplVulkan_Shutdown();
@@ -2592,7 +2624,7 @@ int main()
 
   LOG_DEBUG("Launch VkToy app");
 
-  HelloTriangleApplication app;
+  VkCloudsApp app;
 
   try
   {
