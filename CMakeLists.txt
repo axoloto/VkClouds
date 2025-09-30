@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(VkToy VERSION 0.0.1
+project(VkClouds VERSION 0.0.1
               DESCRIPTION ""
-              HOMEPAGE_URL "https://github.com/axoloto/VkToy"
+              HOMEPAGE_URL "https://github.com/axoloto/VkClouds"
               LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -17,9 +17,9 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 include(cmake/PreventInSourceBuilds.cmake)
 include(cmake/ProjectOptions.cmake)
 
-VkToy_setup_options()
-VkToy_global_options()
-VkToy_local_options()
+VkClouds_setup_options()
+VkClouds_global_options()
+VkClouds_local_options()
 
 # don't know if this should be set globally from here or not...
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
@@ -33,13 +33,13 @@ string(
             8
             GIT_SHORT_SHA)
 
-target_compile_features(VkToy_options INTERFACE cxx_std_${CMAKE_CXX_STANDARD})
+target_compile_features(VkClouds_options INTERFACE cxx_std_${CMAKE_CXX_STANDARD})
 
-add_library(VkToy::VkToy_options ALIAS VkToy_options)
-add_library(VkToy::VkToy_warnings ALIAS VkToy_warnings)
+add_library(VkClouds::VkClouds_options ALIAS VkClouds_options)
+add_library(VkClouds::VkClouds_warnings ALIAS VkClouds_warnings)
 
-#add_library(VkToy::VkToy_options INTERFACE IMPORTED)
-#add_library(VkToy::VkToy_warnings INTERFACE IMPORTED)
+#add_library(VkClouds::VkClouds_options INTERFACE IMPORTED)
+#add_library(VkClouds::VkClouds_warnings INTERFACE IMPORTED)
 
 # configure files based on CMake configuration options
 add_subdirectory(configured_files)
@@ -62,9 +62,9 @@ if(ENABLE_TESTING)
     add_subdirectory(test)
   endif()
 
-  if(VkToy_BUILD_FUZZ_TESTS)
+  if(VkClouds_BUILD_FUZZ_TESTS)
     message(AUTHOR_WARNING "Building Fuzz Tests, using fuzzing sanitizer https://www.llvm.org/docs/LibFuzzer.html")
-    if (NOT VkToy_ENABLE_ADDRESS_SANITIZER AND NOT VkToy_ENABLE_THREAD_SANITIZER)
+    if (NOT VkClouds_ENABLE_ADDRESS_SANITIZER AND NOT VkClouds_ENABLE_THREAD_SANITIZER)
       message(WARNING "You need asan or tsan enabled for meaningful fuzz testing")
     endif()
     add_subdirectory(fuzz_test)
@@ -80,7 +80,7 @@ if(MSVC)
 endif()
 
 # set the startup project for the "play" button in MSVC
-set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT VkToyApp)
+set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT VkCloudsApp)
 
 set(ENABLE_PACKAGING OFF)
 if(ENABLE_PACKAGING)
@@ -88,11 +88,11 @@ if(ENABLE_PACKAGING)
 
   # Add other targets that you want installed here, by default we just package the one executable
   # we know we want to ship
-  VkToy_package_project(
+  VkClouds_package_project(
     TARGETS
-    VkToySpp
-    VkToy_options
-    VkToy_warnings
+    VkCloudsSpp
+    VkClouds_options
+    VkClouds_warnings
     # FIXME: this does not work! CK
     # PRIVATE_DEPENDENCIES_CONFIGURED project_options project_warnings
   )

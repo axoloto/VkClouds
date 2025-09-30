@@ -292,7 +292,7 @@ class VkCloudsApp
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
-    window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
+    window = glfwCreateWindow(WIDTH, HEIGHT, "VkClouds", nullptr, nullptr);
     glfwSetWindowUserPointer(window, this);
     glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
   }
@@ -2421,7 +2421,7 @@ class VkCloudsApp
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
     {
-      ImGui::Begin("Welcome to VkToy!");
+      ImGui::Begin("Welcome to VkClouds!");
       ImGui::Text("This is a small application made for learning purpose.");
       ImGui::Text("It follows the awesome Vulkan tutorial on https://docs.vulkan.org.");
       ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
@@ -2622,7 +2622,7 @@ int main()
 {
   Utils::InitializeLogger();
 
-  LOG_DEBUG("Launch VkToy app");
+  LOG_DEBUG("Launch VkClouds app");
 
   VkCloudsApp app;
 

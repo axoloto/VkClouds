@@ -1,8 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
-
-#include <VkToy/sample_library.hpp>
-
+#include <VkClouds/sample_library.hpp>
 
 TEST_CASE("Factorials are computed", "[factorial]")
 {

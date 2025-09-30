@@ -1,5 +1,5 @@
 # Enable cache if available
-function(VkToy_enable_cache)
+function(VkClouds_enable_cache)
   set(CACHE_OPTION
       "ccache"
       CACHE STRING "Compiler cache to be used")

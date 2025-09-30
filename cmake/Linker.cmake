@@ -1,4 +1,4 @@
-macro(VkToy_configure_linker project_name)
+macro(VkClouds_configure_linker project_name)
   include(CheckCXXCompilerFlag)
 
   set(USER_LINKER_OPTION

@@ -6,8 +6,8 @@ find_package(fmt)
 add_executable(fuzz_tester fuzz_tester.cpp)
 target_link_libraries(
   fuzz_tester
-  PRIVATE VkToy_options
-          VkToy_warnings
+  PRIVATE VkClouds_options
+          VkClouds_warnings
           fmt::fmt
           -coverage
           -fsanitize=fuzzer)

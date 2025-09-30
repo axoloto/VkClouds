@@ -1,5 +1,5 @@
 function(
-  VkToy_enable_sanitizers
+  VkClouds_enable_sanitizers
   project_name
   ENABLE_SANITIZER_ADDRESS
   ENABLE_SANITIZER_LEAK

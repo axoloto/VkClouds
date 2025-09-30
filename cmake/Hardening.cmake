@@ -1,7 +1,7 @@
 include(CheckCXXCompilerFlag)
 
 macro(
-  VkToy_enable_hardening
+  VkClouds_enable_hardening
   target
   global
   ubsan_minimal_runtime)
