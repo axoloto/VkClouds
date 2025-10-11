@@ -3,12 +3,7 @@
 #include <GLFW/glfw3.h>
 //#define GLFW_EXPOSE_NATIVE_WIN32
 
-#define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
-#define GLM_ENABLE_EXPERIMENTAL
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtx/hash.hpp>
+#include "Geometry.hpp"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
@@ -42,8 +37,8 @@ static constexpr uint32_t HEIGHT = 1080;
 
 struct Particle
 {
-  glm::vec2 position;
-  glm::vec2 velocity;
+  glm::vec4 position;
+  glm::vec4 velocity;
   glm::vec4 color;
 
   // vertex buffer is stored in a single binding with multiple attributes, one attribute per layout
@@ -63,7 +58,7 @@ struct Particle
 
     attributeDescriptions[0].binding = 0;
     attributeDescriptions[0].location = 0;
-    attributeDescriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
+    attributeDescriptions[0].format = VK_FORMAT_R32G32B32A32_SFLOAT;
     attributeDescriptions[0].offset = offsetof(Particle, position);
 
     attributeDescriptions[1].binding = 0;
@@ -1266,8 +1261,8 @@ class VkCloudsApp
     // pipeline layout
     VkPipelineLayoutCreateInfo pipelineLayoutInfo {};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.setLayoutCount = 0;
-    pipelineLayoutInfo.pSetLayouts = nullptr;
+    pipelineLayoutInfo.setLayoutCount = 1;
+    pipelineLayoutInfo.pSetLayouts = &sceneGraphicsDescriptorSetLayout;
     pipelineLayoutInfo.pushConstantRangeCount = 0;
     pipelineLayoutInfo.pPushConstantRanges = nullptr;
 
@@ -1334,7 +1329,7 @@ class VkCloudsApp
 
   void createComputePipeline()
   {
-    auto partComputeCode = readShaderFile("partCompute.spv");
+    auto partComputeCode = readShaderFile("boids.spv");
 
     VkShaderModule partComputeModule = createShaderModule(partComputeCode);
 
@@ -1919,10 +1914,11 @@ class VkCloudsApp
     {
       float r = 0.25f * sqrt(rndDist(rndEngine));
       float theta = rndDist(rndEngine) * 2 * 3.14159;
-      float x = r * cos(theta) * HEIGHT / WIDTH;
+      float x = r * cos(theta);
       float y = r * sin(theta);
-      particle.position = glm::vec2(x, y);
-      particle.velocity = glm::normalize(glm::vec2(x, y) * 0.00025f);
+      float z = r * (sin(theta) + cos(theta)) / 2.0;
+      particle.position = glm::vec4(x, y, z, 1.0);
+      particle.velocity = glm::normalize(glm::vec4(x, y, z, 0) * 0.00025f);
       particle.color = glm::vec4(rndDist(rndEngine), rndDist(rndEngine), rndDist(rndEngine), 1.0f);
     }
 
@@ -2036,10 +2032,10 @@ class VkCloudsApp
 
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
     {
-      VkDescriptorBufferInfo bufferInfo {};
-      bufferInfo.buffer = computeUniformBuffers[i];
-      bufferInfo.offset = 0;
-      bufferInfo.range = sizeof(ComputeUniformBufferObject);
+      VkDescriptorBufferInfo computeBufferInfo {};
+      computeBufferInfo.buffer = computeUniformBuffers[i];
+      computeBufferInfo.offset = 0;
+      computeBufferInfo.range = sizeof(ComputeUniformBufferObject);
 
       VkDescriptorBufferInfo storageBufferInfoLastFrame {};
       storageBufferInfoLastFrame.buffer = shaderStorageBuffers[(i - 1) % MAX_FRAMES_IN_FLIGHT];
@@ -2059,7 +2055,7 @@ class VkCloudsApp
       descriptorWrites[0].dstArrayElement = 0;
       descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
       descriptorWrites[0].descriptorCount = 1;
-      descriptorWrites[0].pBufferInfo = &bufferInfo;
+      descriptorWrites[0].pBufferInfo = &computeBufferInfo;
 
       descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
       descriptorWrites[1].dstSet = computeDescriptorSets[i];
@@ -2248,7 +2244,7 @@ class VkCloudsApp
 
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, sceneGraphicsPipelineLayout, 0, 1, &sceneGraphicsDescriptorSets[currentFrame], 0, nullptr);
 
-    vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+    //  vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
     // Particles rendering
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, particleGraphicsPipeline);
@@ -2403,12 +2399,40 @@ class VkCloudsApp
     {
       glfwPollEvents();
 
+      simulateParticles();
+
       renderUI();
 
       drawFrame();
     }
 
     vkDeviceWaitIdle(device);
+  }
+
+  void simulateParticles()
+  {
+    // Compute Submission
+    vkWaitForFences(device, 1, &computeInFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
+
+    updateComputeUniformBuffer(currentFrame);
+
+    vkResetFences(device, 1, &computeInFlightFences[currentFrame]);
+
+    vkResetCommandBuffer(computeCommandBuffers[currentFrame], 0);
+
+    recordComputeCommandBuffer(computeCommandBuffers[currentFrame]);
+
+    VkSubmitInfo computeSubmitInfo {};
+    computeSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    computeSubmitInfo.commandBufferCount = 1;
+    computeSubmitInfo.pCommandBuffers = &computeCommandBuffers[currentFrame];
+    computeSubmitInfo.signalSemaphoreCount = 1;
+    computeSubmitInfo.pSignalSemaphores = &computeFinishedSemaphores[currentFrame];
+
+    if (vkQueueSubmit(computeQueue, 1, &computeSubmitInfo, computeInFlightFences[currentFrame]) != VK_SUCCESS)
+    {
+      throw std::runtime_error("Failed to submit compute command buffer!");
+    }
   }
 
   void renderUI()
@@ -2450,35 +2474,13 @@ class VkCloudsApp
       throw std::runtime_error("Failed to acquire swap chain image!");
     }
 
-    // Compute Submission
-    vkWaitForFences(device, 1, &computeInFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
-
-    updateUniformBuffer(currentFrame);
-    updateComputeUniformBuffer(currentFrame);
-
-    vkResetFences(device, 1, &computeInFlightFences[currentFrame]);
-
-    vkResetCommandBuffer(computeCommandBuffers[currentFrame], 0);
-
-    recordComputeCommandBuffer(computeCommandBuffers[currentFrame]);
-
-    VkSubmitInfo computeSubmitInfo {};
-    computeSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    computeSubmitInfo.commandBufferCount = 1;
-    computeSubmitInfo.pCommandBuffers = &computeCommandBuffers[currentFrame];
-    computeSubmitInfo.signalSemaphoreCount = 1;
-    computeSubmitInfo.pSignalSemaphores = &computeFinishedSemaphores[currentFrame];
-
-    if (vkQueueSubmit(computeQueue, 1, &computeSubmitInfo, computeInFlightFences[currentFrame]) != VK_SUCCESS)
-    {
-      throw std::runtime_error("Failed to submit compute command buffer!");
-    }
-
     // reset the fence to its unsignaled state
     // only do it if we are submitting work, i.e swap chain is correct
     vkResetFences(device, 1, &inFlightFences[currentFrame]);
 
     vkResetCommandBuffer(graphicsCommandBuffers[currentFrame], 0);
+
+    updateUniformBuffer(currentFrame);
 
     recordGraphicsCommandBuffer(graphicsCommandBuffers[currentFrame], imageIndex);
 
@@ -2527,7 +2529,7 @@ class VkCloudsApp
     static auto startTime = std::chrono::high_resolution_clock::now();
 
     auto currentTime = std::chrono::high_resolution_clock::now();
-    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+    float time = 0.0f; //std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
     UniformBufferObject ubo {};
     ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(10.0f), glm::vec3(0.0f, 0.0f, 1.0f));

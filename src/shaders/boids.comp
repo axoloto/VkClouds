@@ -1,0 +1,113 @@
+#version 450
+
+#include "define.glsl"
+
+#define EFFECT_RADIUS_SQUARED 1.0f
+#define VELOCITY_SCALE 0.5f
+#define ALIGNEMENT_SCALE 1.6f
+#define COHESION_SCALE 1.45f
+#define SEPARATION_SCALE 1.6f
+
+layout(binding = 0) uniform ParameterUBO
+{
+  float deltaTime;
+}
+ubo;
+
+struct Particle
+{
+  vec4 position;
+  vec4 velocity;
+  vec4 color;
+};
+
+layout(std140, binding = 1) readonly buffer ParticleSSBOIn
+{
+  Particle particlesIn[];
+};
+
+layout(std140, binding = 2) buffer ParticleSSBOOut
+{
+  Particle particlesOut[];
+};
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+void main()
+{
+  uint index = gl_GlobalInvocationID.x;
+
+  Particle particleIn = particlesIn[index];
+  const vec4 pos = particleIn.position;
+  const vec4 vel = particleIn.velocity;
+
+  vec4 newAcc = NULL_VEC4;
+  vec4 averageBoidsPos = NULL_VEC4;
+  vec4 averageBoidsVel = NULL_VEC4;
+  vec4 repulseHeading = NULL_VEC4;
+
+  float squaredDist = 0.0f;
+  vec4 posN = NULL_VEC4;
+  vec4 vec = NULL_VEC4;
+
+  uint count = 0;
+  uint totalNbElements = gl_NumWorkGroups.x * gl_WorkGroupSize.x;
+
+  for (uint e = 0; e < totalNbElements; ++e)
+  {
+    posN = particlesIn[e].position;
+
+    vec = pos - posN;
+    squaredDist = dot(vec, vec);
+
+    // Second condition to deal with almost identical points and i == e
+    if (squaredDist < EFFECT_RADIUS_SQUARED && squaredDist > FLOAT_EPS)
+    {
+      averageBoidsPos += posN;
+      averageBoidsVel += normalize(particlesIn[e].velocity);
+      repulseHeading += vec / squaredDist;
+      ++count;
+    }
+  }
+
+  if (count != 0)
+  {
+    // cohesion
+    averageBoidsPos /= count;
+    averageBoidsPos -= pos;
+    averageBoidsPos = normalize(averageBoidsPos) * VELOCITY_SCALE;
+    // alignment
+    averageBoidsVel = normalize(averageBoidsVel) * VELOCITY_SCALE;
+    // separation
+    repulseHeading = normalize(repulseHeading) * VELOCITY_SCALE;
+
+    newAcc = averageBoidsVel * ALIGNEMENT_SCALE
+        + repulseHeading * SEPARATION_SCALE
+        + averageBoidsPos * COHESION_SCALE;
+  }
+
+  // Integrate acceleration to obtain velocity
+  vec4 newVel = vel + newAcc * ubo.deltaTime;
+  float newVelNorm = clamp(length(newVel), 0.2 * VELOCITY_SCALE, VELOCITY_SCALE);
+  newVel = normalize(newVel) * newVelNorm;
+
+  // Integrate velocity to obtain position before clamping to area boundaries
+  vec4 newPos = pos + newVel * ubo.deltaTime;
+
+  // Wall boundary condition
+  // If clamped != newPos, we hit a wall flip movement and damp velocity
+  vec4 clampedNewPos = clamp(newPos, MIN_BOUNDS, MAX_BOUNDS);
+  bvec3 collided = notEqual(clampedNewPos.xyz, newPos.xyz);
+  if (any(collided))
+  {
+    newVel *= -0.5;
+  }
+  clampedNewPos.w = 1.0;
+
+  // Output
+  particlesOut[index].position = clampedNewPos;
+  particlesOut[index].velocity = newVel;
+
+  //   particlesOut[index].position = pos;
+  //   particlesOut[index].velocity = vel;
+}
