@@ -1,4 +1,4 @@
-file(GLOB SRC "VkCloudsApp.cpp" "Utils.cpp" "*.hpp")
+file(GLOB SRC "VkCloudsApp.cpp")
 
 add_executable(VkCloudsApp ${SRC})
 set_target_properties(VkCloudsApp PROPERTIES FOLDER app)
@@ -6,10 +6,6 @@ set_target_properties(VkCloudsApp PROPERTIES FOLDER app)
 if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
     target_compile_definitions(VkCloudsApp PUBLIC DEBUG_BUILD)
 endif()
-
-target_compile_definitions(VkCloudsApp PRIVATE SHADER_DIR=${SHADER_DIR})
-target_compile_definitions(VkCloudsApp PRIVATE TEXTURE_DIR=${TEXTURE_DIR})
-target_compile_definitions(VkCloudsApp PRIVATE MODEL_DIR=${MODEL_DIR})
 
 find_package(glfw3 REQUIRED)
 find_package(VulkanLoader REQUIRED)

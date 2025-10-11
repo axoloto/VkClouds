@@ -3,8 +3,6 @@
 #include <GLFW/glfw3.h>
 //#define GLFW_EXPOSE_NATIVE_WIN32
 
-#include "Geometry.hpp"
-
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
@@ -27,6 +25,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "Geometry.hpp"
 #include "Logging.hpp"
 #include "Utils.hpp"
 #include "imgui_impl_glfw.h"
