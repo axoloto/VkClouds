@@ -1,0 +1,31 @@
+#version 450
+
+#include "define.glsl"
+
+// Input buffers
+layout(std430, binding = 0) readonly buffer AccBuffer
+{
+  vec4 acc[];
+};
+
+layout(std430, binding = 1) buffer VelBuffer
+{
+  vec4 vel[];
+};
+
+// Params as push constants or uniforms
+layout(push_constant) uniform Params
+{
+  float timeStep;
+  float maxVelocity;
+}
+params;
+
+void main()
+{
+  vec4 newVel = vel[ID] + acc[ID] * params.timeStep;
+
+  float newVelNorm = clamp(length(newVel), 0.2 * params.maxVelocity, params.maxVelocity);
+
+  vel[ID] = normalize(newVel) * newVelNorm;
+}
