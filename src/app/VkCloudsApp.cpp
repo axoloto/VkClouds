@@ -2,6 +2,7 @@
 #include <GLFW/glfw3.h>
 
 #include "VkInstance.hpp"
+#include "VkPhysicalDevice.hpp"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
@@ -138,10 +139,6 @@ struct ComputeUniformBufferObject
   float deltaTime;
 };
 
-const std::vector<const char*> deviceExtensions = {
-  VK_KHR_SWAPCHAIN_EXTENSION_NAME
-};
-
 static void check_vk_result(VkResult err)
 {
   if (err == VK_SUCCESS)
@@ -170,7 +167,8 @@ class VkCloudsApp
   private:
   GLFWwindow* window;
   std::unique_ptr<vk::Instance> m_instance;
-  VkPhysicalDevice physicalDevice;
+  std::unique_ptr<vk::PhysicalDevice> m_physicalDevice;
+
   VkDevice device;
   uint32_t graphicsAndComputeQueueFamily;
   VkQueue graphicsQueue;
@@ -224,8 +222,6 @@ class VkCloudsApp
 
   VkImageView textureImageView;
   VkSampler textureSampler;
-
-  VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
 
   const int MAX_FRAMES_IN_FLIGHT = 2;
   uint32_t currentFrame = 0;
@@ -282,7 +278,7 @@ class VkCloudsApp
   {
     m_instance = std::make_unique<vk::Instance>("VkClouds", getRequiredGlfwExtensions());
     createSurface();
-    pickPhysicalDevice();
+    m_physicalDevice = std::make_unique<vk::PhysicalDevice>(m_instance->GetVkInstance(), surface);
     createLogicalDevice();
     createSwapChain();
     createImageViews();
@@ -321,7 +317,7 @@ class VkCloudsApp
     ImGui_ImplGlfw_InitForVulkan(window, true);
     ImGui_ImplVulkan_InitInfo initInfo = {};
     initInfo.Instance = m_instance->GetVkInstance();
-    initInfo.PhysicalDevice = physicalDevice;
+    initInfo.PhysicalDevice = m_physicalDevice->GetVkPhysicalDevice();
     initInfo.Device = device;
     initInfo.QueueFamily = graphicsAndComputeQueueFamily;
     initInfo.Queue = graphicsQueue;
@@ -331,7 +327,7 @@ class VkCloudsApp
     initInfo.Subpass = 0;
     initInfo.MinImageCount = minImageCount;
     initInfo.ImageCount = swapChainImages.size();
-    initInfo.MSAASamples = msaaSamples;
+    initInfo.MSAASamples = m_physicalDevice->GetMsaaSamples();
     initInfo.Allocator = nullptr;
     initInfo.CheckVkResultFn = check_vk_result;
     ImGui_ImplVulkan_Init(&initInfo);
@@ -345,183 +341,9 @@ class VkCloudsApp
     }
   }
 
-  void pickPhysicalDevice()
-  {
-    uint32_t deviceCount = 0;
-    vkEnumeratePhysicalDevices(m_instance->GetVkInstance(), &deviceCount, nullptr);
-
-    if (deviceCount == 0)
-      throw std::runtime_error("Failed to find GPUs with Vulkan support!");
-
-    std::vector<VkPhysicalDevice> devices(deviceCount);
-    vkEnumeratePhysicalDevices(m_instance->GetVkInstance(), &deviceCount, devices.data());
-
-    for (const auto& device : devices)
-    {
-      if (isDeviceSuitable(device))
-      {
-        physicalDevice = device;
-        msaaSamples = getMaxUsableSampleCount();
-        break;
-      }
-    }
-
-    if (physicalDevice == VK_NULL_HANDLE)
-      throw std::runtime_error("Failed to find a suitable GPU!");
-  }
-
-  bool isDeviceSuitable(VkPhysicalDevice device)
-  {
-    VkPhysicalDeviceProperties deviceProperties;
-    VkPhysicalDeviceFeatures deviceFeatures;
-    deviceFeatures.samplerAnisotropy = VK_TRUE;
-    vkGetPhysicalDeviceProperties(device, &deviceProperties);
-    vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
-
-    QueueFamilyIndices indices = findQueuesFamilies(device);
-
-    bool extensionsSupported = checkDeviceExtensionSupport(device);
-
-    bool swapChainAdequate = false;
-    if (extensionsSupported)
-    {
-      SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
-      swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
-    }
-
-    VkPhysicalDeviceFeatures supportedFeatures;
-    vkGetPhysicalDeviceFeatures(device, &supportedFeatures);
-
-    return deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU
-        && deviceFeatures.geometryShader
-        && extensionsSupported
-        && swapChainAdequate
-        && supportedFeatures.samplerAnisotropy
-        && indices.isComplete();
-  }
-
-  bool checkDeviceExtensionSupport(VkPhysicalDevice device)
-  {
-    uint32_t extensionCount;
-    vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
-
-    std::vector<VkExtensionProperties> availableExtensions(extensionCount);
-    vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
-
-    std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
-
-    for (const auto& extension : availableExtensions)
-    {
-      requiredExtensions.erase(extension.extensionName);
-    }
-
-    return requiredExtensions.empty();
-  }
-
-  VkSampleCountFlagBits getMaxUsableSampleCount()
-  {
-    VkPhysicalDeviceProperties physicalDeviceProperties;
-    vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
-
-    VkSampleCountFlags counts = physicalDeviceProperties.limits.framebufferColorSampleCounts & physicalDeviceProperties.limits.framebufferDepthSampleCounts;
-    if (counts & VK_SAMPLE_COUNT_64_BIT)
-      return VK_SAMPLE_COUNT_64_BIT;
-    if (counts & VK_SAMPLE_COUNT_32_BIT)
-      return VK_SAMPLE_COUNT_32_BIT;
-    if (counts & VK_SAMPLE_COUNT_16_BIT)
-      return VK_SAMPLE_COUNT_16_BIT;
-    if (counts & VK_SAMPLE_COUNT_8_BIT)
-      return VK_SAMPLE_COUNT_8_BIT;
-    if (counts & VK_SAMPLE_COUNT_4_BIT)
-      return VK_SAMPLE_COUNT_4_BIT;
-    if (counts & VK_SAMPLE_COUNT_2_BIT)
-      return VK_SAMPLE_COUNT_2_BIT;
-
-    return VK_SAMPLE_COUNT_1_BIT;
-  }
-  struct QueueFamilyIndices
-  {
-    std::optional<uint32_t> graphicsAndComputeFamily; // drawing commands to render an image
-    std::optional<uint32_t> presentFamily; // presenting images to the window surface
-
-    bool isComplete()
-    {
-      return graphicsAndComputeFamily.has_value() && presentFamily.has_value();
-    }
-  };
-
-  QueueFamilyIndices findQueuesFamilies(VkPhysicalDevice device)
-  {
-    QueueFamilyIndices indices;
-
-    uint32_t queueFamilyCount = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
-
-    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-    vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
-
-    int i = 0;
-
-    for (const auto& queueFamily : queueFamilies)
-    {
-      if ((queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) && (queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT))
-      {
-        indices.graphicsAndComputeFamily = i;
-      }
-
-      VkBool32 presentSupport = false;
-      vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
-
-      if (presentSupport)
-      {
-        indices.presentFamily = i;
-      }
-
-      if (indices.isComplete())
-        break;
-
-      i++;
-    }
-    return indices;
-  }
-
-  struct SwapChainSupportDetails
-  {
-    VkSurfaceCapabilitiesKHR capabilities;
-    std::vector<VkSurfaceFormatKHR> formats;
-    std::vector<VkPresentModeKHR> presentModes;
-  };
-
-  SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device)
-  {
-    SwapChainSupportDetails details;
-
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
-
-    uint32_t formatCount;
-    vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, nullptr);
-
-    if (formatCount != 0)
-    {
-      details.formats.resize(formatCount);
-      vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, details.formats.data());
-    }
-
-    uint32_t presentModeCount;
-    vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, nullptr);
-
-    if (presentModeCount != 0)
-    {
-      details.presentModes.resize(presentModeCount);
-      vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, details.presentModes.data());
-    }
-
-    return details;
-  }
-
   void createLogicalDevice()
   {
-    QueueFamilyIndices indices = findQueuesFamilies(physicalDevice);
+    auto indices = m_physicalDevice->GetQueueFamilyIndices();
 
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
     std::set<uint32_t> uniqueQueueFamilies = { indices.graphicsAndComputeFamily.value(), indices.presentFamily.value() };
@@ -547,10 +369,10 @@ class VkCloudsApp
 
     createInfo.pEnabledFeatures = &deviceFeatures;
 
-    createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
-    createInfo.ppEnabledExtensionNames = deviceExtensions.data();
+    createInfo.enabledExtensionCount = static_cast<uint32_t>(vk::deviceExtensions.size());
+    createInfo.ppEnabledExtensionNames = vk::deviceExtensions.data();
 
-    if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS)
+    if (vkCreateDevice(m_physicalDevice->GetVkPhysicalDevice(), &createInfo, nullptr, &device) != VK_SUCCESS)
     {
       std::runtime_error("Failed to create logical device!");
     }
@@ -565,7 +387,7 @@ class VkCloudsApp
 
   void createSwapChain()
   {
-    SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice);
+    auto swapChainSupport = m_physicalDevice->GetSwapChainSupportDetails();
 
     VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
     VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
@@ -589,7 +411,7 @@ class VkCloudsApp
     createInfo.imageArrayLayers = 1;
     createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // VK_IMAGE_USAGE_TRANSFER_DST_BIT if final blit
 
-    QueueFamilyIndices indices = findQueuesFamilies(physicalDevice);
+    auto indices = m_physicalDevice->GetQueueFamilyIndices();
     uint32_t queueFamilyIndices[] = { indices.graphicsAndComputeFamily.value(), indices.presentFamily.value() };
 
     // Here we are drawing on the images in the swap chain from the gfx queue
@@ -733,7 +555,7 @@ class VkCloudsApp
     // color msaa
     VkAttachmentDescription colorAttachment {};
     colorAttachment.format = swapChainImageFormat;
-    colorAttachment.samples = msaaSamples;
+    colorAttachment.samples = m_physicalDevice->GetMsaaSamples();
     colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -763,7 +585,7 @@ class VkCloudsApp
     // depth msaa
     VkAttachmentDescription depthAttachment {};
     depthAttachment.format = findDepthFormat();
-    depthAttachment.samples = msaaSamples;
+    depthAttachment.samples = m_physicalDevice->GetMsaaSamples();
     depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -976,7 +798,7 @@ class VkCloudsApp
     VkPipelineMultisampleStateCreateInfo multisampling {};
     multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
     multisampling.sampleShadingEnable = VK_FALSE;
-    multisampling.rasterizationSamples = msaaSamples;
+    multisampling.rasterizationSamples = m_physicalDevice->GetMsaaSamples();
     multisampling.minSampleShading = 1.0f;
     multisampling.pSampleMask = nullptr;
     multisampling.alphaToCoverageEnable = VK_FALSE;
@@ -1148,7 +970,7 @@ class VkCloudsApp
     VkPipelineMultisampleStateCreateInfo multisampling {};
     multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
     multisampling.sampleShadingEnable = VK_FALSE;
-    multisampling.rasterizationSamples = msaaSamples;
+    multisampling.rasterizationSamples = m_physicalDevice->GetMsaaSamples();
     multisampling.minSampleShading = 1.0f;
     multisampling.pSampleMask = nullptr;
     multisampling.alphaToCoverageEnable = VK_FALSE;
@@ -1282,7 +1104,7 @@ class VkCloudsApp
 
   void createCommandPool()
   {
-    QueueFamilyIndices queueFamilyIndices = findQueuesFamilies(physicalDevice);
+    auto queueFamilyIndices = m_physicalDevice->GetQueueFamilyIndices();
 
     VkCommandPoolCreateInfo poolInfo {};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -1299,7 +1121,7 @@ class VkCloudsApp
   {
     VkFormat colorFormat = swapChainImageFormat;
 
-    createImage(swapChainExtent.width, swapChainExtent.height, 1, msaaSamples, colorFormat,
+    createImage(swapChainExtent.width, swapChainExtent.height, 1, m_physicalDevice->GetMsaaSamples(), colorFormat,
         VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, colorImage, colorImageMemory);
 
@@ -1310,7 +1132,7 @@ class VkCloudsApp
   {
     VkFormat depthFormat = findDepthFormat();
 
-    createImage(swapChainExtent.width, swapChainExtent.height, 1, msaaSamples, depthFormat,
+    createImage(swapChainExtent.width, swapChainExtent.height, 1, m_physicalDevice->GetMsaaSamples(), depthFormat,
         VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depthImage, depthImageMemory);
 
@@ -1332,7 +1154,7 @@ class VkCloudsApp
     for (VkFormat format : candidates)
     {
       VkFormatProperties props;
-      vkGetPhysicalDeviceFormatProperties(physicalDevice, format, &props);
+      vkGetPhysicalDeviceFormatProperties(m_physicalDevice->GetVkPhysicalDevice(), format, &props);
 
       if (tiling == VK_IMAGE_TILING_LINEAR && (props.linearTilingFeatures & features) == features)
       {
@@ -1400,7 +1222,7 @@ class VkCloudsApp
   {
     //Check if image format supports linear blitting
     VkFormatProperties formatProperties;
-    vkGetPhysicalDeviceFormatProperties(physicalDevice, imageFormat, &formatProperties);
+    vkGetPhysicalDeviceFormatProperties(m_physicalDevice->GetVkPhysicalDevice(), imageFormat, &formatProperties);
 
     if (!(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT))
     {
@@ -1516,7 +1338,7 @@ class VkCloudsApp
     samplerInfo.anisotropyEnable = VK_TRUE;
 
     VkPhysicalDeviceProperties properties {};
-    vkGetPhysicalDeviceProperties(physicalDevice, &properties);
+    vkGetPhysicalDeviceProperties(m_physicalDevice->GetVkPhysicalDevice(), &properties);
     samplerInfo.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
     samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
     samplerInfo.unnormalizedCoordinates = VK_FALSE; // [0, 1)
@@ -2027,7 +1849,7 @@ class VkCloudsApp
   uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties)
   {
     VkPhysicalDeviceMemoryProperties memProperties;
-    vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
+    vkGetPhysicalDeviceMemoryProperties(m_physicalDevice->GetVkPhysicalDevice(), &memProperties);
 
     for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i)
     {
@@ -2466,10 +2288,10 @@ int main()
 
   LOG_DEBUG("Launch VkClouds app");
 
-  auto app = VkCloudsApp();
-
   try
   {
+    auto app = VkCloudsApp();
+
     app.run();
   }
   catch (const std::exception& e)
