@@ -1,4 +1,4 @@
-file(GLOB SRC "VkCloudsApp.cpp")
+file(GLOB SRC "*.cpp" "*.hpp")
 
 add_executable(VkCloudsApp ${SRC})
 set_target_properties(VkCloudsApp PROPERTIES FOLDER app)

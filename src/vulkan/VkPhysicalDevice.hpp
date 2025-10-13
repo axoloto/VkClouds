@@ -1,6 +1,10 @@
+#pragma once
+
 #include <optional>
 #include <vector>
 #include <vulkan/vulkan.h>
+
+#include "VkInstance.hpp"
 
 namespace vk
 {
@@ -29,17 +33,23 @@ const std::vector<const char*> deviceExtensions = {
 class PhysicalDevice
 {
   public:
-  PhysicalDevice(VkInstance instance, VkSurfaceKHR surface);
+  PhysicalDevice(const VkInstance& instance, VkSurfaceKHR surface);
   ~PhysicalDevice();
-  VkPhysicalDevice GetVkPhysicalDevice() { return m_physicalDevice; }
-  QueueFamilyIndices GetQueueFamilyIndices() { return m_queueFamilyIndices; }
-  VkSampleCountFlagBits GetMsaaSamples() { return m_msaaSamples; }
-  SwapChainSupportDetails GetSwapChainSupportDetails() { return m_swapChainSupportDetails; }
+  VkPhysicalDevice getVk() const { return m_physicalDevice; }
+  QueueFamilyIndices GetQueueFamilyIndices() const { return m_queueFamilyIndices; }
+  VkSampleCountFlagBits GetMsaaSamples() const { return m_msaaSamples; }
+  SwapChainSupportDetails GetSwapChainSupportDetails() const { return m_swapChainSupportDetails; }
+  VkFormat getDepthFormat() const { return m_depthFormat; }
+  VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
+  uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
 
   private:
   VkPhysicalDevice m_physicalDevice;
   QueueFamilyIndices m_queueFamilyIndices;
   VkSampleCountFlagBits m_msaaSamples;
   SwapChainSupportDetails m_swapChainSupportDetails;
+  VkFormat m_depthFormat;
+
+  VkFormat findDepthFormat();
 };
 }

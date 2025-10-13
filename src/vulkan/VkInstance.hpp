@@ -1,3 +1,5 @@
+#pragma once
+
 #include <string>
 #include <vector>
 #include <vulkan/vulkan.h>
@@ -9,7 +11,7 @@ class Instance
   public:
   Instance(const std::string& appName, std::vector<const char*> requiredExtensionNames);
   ~Instance();
-  VkInstance GetVkInstance() { return m_instance; }
+  VkInstance getVk() { return m_instance; }
 
   private:
   void setupDebugMessenger();
