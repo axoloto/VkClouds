@@ -29,6 +29,8 @@
 
 #include "Geometry.hpp"
 #include "Logging.hpp"
+#include "Parameters.hpp"
+#include "Particle.hpp"
 #include "Utils.hpp"
 #include "Vertex.hpp"
 #include "imgui_impl_glfw.h"
@@ -36,42 +38,7 @@
 
 static constexpr uint32_t WIDTH = 1920;
 static constexpr uint32_t HEIGHT = 1080;
-
-struct Particle
-{
-  glm::vec4 position;
-  glm::vec4 velocity;
-  glm::vec4 color;
-
-  // vertex buffer is stored in a single binding with multiple attributes, one attribute per layout
-  static VkVertexInputBindingDescription getBindingDescription()
-  {
-    VkVertexInputBindingDescription bindingDescription {};
-    bindingDescription.binding = 0;
-    bindingDescription.stride = sizeof(Particle);
-    bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-    return bindingDescription;
-  }
-
-  static std::array<VkVertexInputAttributeDescription, 2> getAttributeDescriptions()
-  {
-    std::array<VkVertexInputAttributeDescription, 2> attributeDescriptions {};
-
-    attributeDescriptions[0].binding = 0;
-    attributeDescriptions[0].location = 0;
-    attributeDescriptions[0].format = VK_FORMAT_R32G32B32A32_SFLOAT;
-    attributeDescriptions[0].offset = offsetof(Particle, position);
-
-    attributeDescriptions[1].binding = 0;
-    attributeDescriptions[1].location = 1;
-    attributeDescriptions[1].format = VK_FORMAT_R32G32B32A32_SFLOAT;
-    attributeDescriptions[1].offset = offsetof(Particle, color);
-
-    return attributeDescriptions;
-  }
-};
-static constexpr uint32_t PARTICLE_COUNT = 256;
+static constexpr uint32_t PARTICLE_COUNT = 512;
 
 struct UniformBufferObject
 {
@@ -213,7 +180,7 @@ class VkCloudsApp
     createBoxVertexBuffer();
     createBoxIndexBuffer();
     createUniformBuffers();
-    createShaderStorageBuffers();
+    createParticleShaderStorageBuffers();
     createBoxGraphicsDescriptorSets();
     createComputeDescriptorSets();
     createSyncObjects();
@@ -878,7 +845,7 @@ class VkCloudsApp
     }
   }
 
-  void createShaderStorageBuffers()
+  void createParticleShaderStorageBuffers()
   {
     shaderStorageBuffers.resize(MAX_FRAMES_IN_FLIGHT);
     shaderStorageBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
@@ -887,7 +854,17 @@ class VkCloudsApp
     std::default_random_engine rndEngine((unsigned)time(nullptr));
     std::uniform_real_distribution<float> rndDist(0.0f, 1.0f);
 
+    float boxLength = 2.0f;
+
+    const auto& subdiv3D = Utils::GetNbParticlesSubdiv3D((Utils::NbParticles)PARTICLE_COUNT);
+    glm::vec3 grid3DRes = { subdiv3D[0], subdiv3D[1], subdiv3D[2] };
+    glm::vec3 start3D = { boxLength / -6.0f, boxLength / -6.0f, boxLength / -6.0f };
+    glm::vec3 end3D = { boxLength / 6.0f, boxLength / 6.0f, boxLength / 6.0f };
+
+    auto particlePositions = Geometry::Generate3DGrid(Geometry::Shape3D::Sphere, grid3DRes, start3D, end3D);
+
     // initial position is on a circle
+    int i = 0;
     std::vector<Particle> particles(PARTICLE_COUNT);
     for (auto& particle : particles)
     {
@@ -896,9 +873,10 @@ class VkCloudsApp
       float x = r * cos(theta);
       float y = r * sin(theta);
       float z = r * (sin(theta) + cos(theta)) / 2.0;
-      particle.position = glm::vec4(x, y, z, 1.0);
-      particle.velocity = glm::normalize(glm::vec4(x, y, z, 0) * 0.00025f);
+      particle.position = glm::vec4(particlePositions[i], 1.0);
+      particle.velocity = glm::normalize(glm::vec4(particlePositions[i], 0) * 0.00025f);
       particle.color = glm::vec4(rndDist(rndEngine), rndDist(rndEngine), rndDist(rndEngine), 1.0f);
+      i++;
     }
 
     VkDeviceSize bufferSize = sizeof(Particle) * PARTICLE_COUNT;
@@ -923,7 +901,8 @@ class VkCloudsApp
     vkFreeMemory(m_device->GetVk(), stagingBufferMemory, nullptr);
   }
 
-  void createBoxGraphicsDescriptorSets()
+  void
+  createBoxGraphicsDescriptorSets()
   {
     std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, boxGraphicsDescriptorSetLayout);
     VkDescriptorSetAllocateInfo allocInfo {};
