@@ -119,16 +119,16 @@ class VkCloudsApp
 
   VkSurfaceKHR surface;
 
-  VkDescriptorSetLayout sceneGraphicsDescriptorSetLayout;
+  VkDescriptorSetLayout boxGraphicsDescriptorSetLayout;
   VkDescriptorSetLayout computeDescriptorSetLayout;
 
-  std::vector<VkDescriptorSet> sceneGraphicsDescriptorSets;
+  std::vector<VkDescriptorSet> boxGraphicsDescriptorSets;
   std::vector<VkDescriptorSet> computeDescriptorSets;
 
   VkRenderPass renderPass;
 
-  VkPipelineLayout sceneGraphicsPipelineLayout;
-  VkPipeline sceneGraphicsPipeline;
+  VkPipelineLayout boxGraphicsPipelineLayout;
+  VkPipeline boxGraphicsPipeline;
 
   VkPipelineLayout particleGraphicsPipelineLayout;
   VkPipeline particleGraphicsPipeline;
@@ -136,8 +136,6 @@ class VkCloudsApp
   VkPipelineLayout computePipelineLayout;
   VkPipeline computePipeline;
 
-  std::vector<Vertex> vertices;
-  std::vector<uint32_t> indices;
   VkBuffer vertexBuffer;
   VkDeviceMemory vertexBufferMemory;
   VkBuffer indexBuffer;
@@ -206,18 +204,17 @@ class VkCloudsApp
     createRenderPass();
     createGraphicsDescriptorSetLayout();
     createComputeDescriptorSetLayout();
-    createSceneGraphicsPipeline();
+    createBoxGraphicsPipeline();
     createParticleGraphicsPipeline();
     createComputePipeline();
 
     m_swapChain->createFramebuffers(renderPass);
 
-    loadModel();
-    createVertexBuffer();
-    createIndexBuffer();
+    createBoxVertexBuffer();
+    createBoxIndexBuffer();
     createUniformBuffers();
     createShaderStorageBuffers();
-    createSceneGraphicsDescriptorSets();
+    createBoxGraphicsDescriptorSets();
     createComputeDescriptorSets();
     createSyncObjects();
   }
@@ -365,7 +362,7 @@ class VkCloudsApp
     layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
     layoutInfo.pBindings = bindings.data();
 
-    if (vkCreateDescriptorSetLayout(m_device->GetVk(), &layoutInfo, nullptr, &sceneGraphicsDescriptorSetLayout) != VK_SUCCESS)
+    if (vkCreateDescriptorSetLayout(m_device->GetVk(), &layoutInfo, nullptr, &boxGraphicsDescriptorSetLayout) != VK_SUCCESS)
     {
       throw std::runtime_error("Failed to create graphics descriptor set layout!");
     }
@@ -407,7 +404,7 @@ class VkCloudsApp
     }
   }
 
-  void createSceneGraphicsPipeline()
+  void createBoxGraphicsPipeline()
   {
     // shaders
     auto vertShaderCode = readShaderFile("vert.spv");
@@ -431,7 +428,6 @@ class VkCloudsApp
     VkPipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo, fragShaderStageInfo };
 
     // vertex buffer
-
     auto bindingDescription = Vertex::getBindingDescription();
     auto attributeDescriptions = Vertex::getAttributeDescriptions();
 
@@ -445,7 +441,7 @@ class VkCloudsApp
     // input assembly
     VkPipelineInputAssemblyStateCreateInfo inputAssembly {};
     inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
     inputAssembly.primitiveRestartEnable = VK_FALSE;
 
     // dynamic states
@@ -542,11 +538,11 @@ class VkCloudsApp
     VkPipelineLayoutCreateInfo pipelineLayoutInfo {};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pipelineLayoutInfo.setLayoutCount = 1;
-    pipelineLayoutInfo.pSetLayouts = &sceneGraphicsDescriptorSetLayout;
+    pipelineLayoutInfo.pSetLayouts = &boxGraphicsDescriptorSetLayout;
     pipelineLayoutInfo.pushConstantRangeCount = 0;
     pipelineLayoutInfo.pPushConstantRanges = nullptr;
 
-    if (vkCreatePipelineLayout(m_device->GetVk(), &pipelineLayoutInfo, nullptr, &sceneGraphicsPipelineLayout) != VK_SUCCESS)
+    if (vkCreatePipelineLayout(m_device->GetVk(), &pipelineLayoutInfo, nullptr, &boxGraphicsPipelineLayout) != VK_SUCCESS)
     {
       throw std::runtime_error("Failed to create pipeline layout!");
     }
@@ -564,13 +560,13 @@ class VkCloudsApp
     pipelineInfo.pDepthStencilState = &depthStencil;
     pipelineInfo.pColorBlendState = &colorBlending;
     pipelineInfo.pDynamicState = &dynamicState;
-    pipelineInfo.layout = sceneGraphicsPipelineLayout;
+    pipelineInfo.layout = boxGraphicsPipelineLayout;
     pipelineInfo.renderPass = renderPass;
     pipelineInfo.subpass = 0;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
     pipelineInfo.basePipelineIndex = -1;
 
-    if (vkCreateGraphicsPipelines(m_device->GetVk(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &sceneGraphicsPipeline) != VK_SUCCESS)
+    if (vkCreateGraphicsPipelines(m_device->GetVk(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &boxGraphicsPipeline) != VK_SUCCESS)
     {
       throw std::runtime_error("Failed to create the graphics pipeline!");
     }
@@ -714,7 +710,7 @@ class VkCloudsApp
     VkPipelineLayoutCreateInfo pipelineLayoutInfo {};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pipelineLayoutInfo.setLayoutCount = 1;
-    pipelineLayoutInfo.pSetLayouts = &sceneGraphicsDescriptorSetLayout;
+    pipelineLayoutInfo.pSetLayouts = &boxGraphicsDescriptorSetLayout;
     pipelineLayoutInfo.pushConstantRangeCount = 0;
     pipelineLayoutInfo.pPushConstantRanges = nullptr;
 
@@ -786,52 +782,27 @@ class VkCloudsApp
     vkDestroyShaderModule(m_device->GetVk(), partComputeModule, nullptr);
   }
 
-  void loadModel()
+  void createBoxVertexBuffer()
   {
-    tinyobj::attrib_t attrib;
-    std::vector<tinyobj::shape_t> shapes;
-    std::vector<tinyobj::material_t> materials;
-    std::string warn, err;
+    std::vector<Vertex> vertices;
 
-    if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, getModelPath("viking_room.obj").c_str()))
+    int boxLength = 2.0f;
+    auto box3DVertices = Geometry::RefCubeVertices;
+    for (auto& vertex : box3DVertices)
     {
-      throw std::runtime_error(warn + err);
+      float x = vertex[0] * boxLength / 2.0f;
+      float y = vertex[1] * boxLength / 2.0f;
+      float z = vertex[2] * boxLength / 2.0f;
+
+      Vertex vertex {};
+
+      vertex.pos = { x, y, z };
+      vertex.texCoord = { 0.0f, 0.0f }; //not used
+      vertex.color = { 1.0f, 1.0f, 1.0f };
+
+      vertices.push_back(vertex);
     }
 
-    std::unordered_map<Vertex, uint32_t> uniqueVertices {};
-
-    for (const auto& shape : shapes)
-    {
-      for (const auto& index : shape.mesh.indices)
-      {
-        Vertex vertex {};
-
-        vertex.pos = {
-          attrib.vertices[3 * index.vertex_index + 0],
-          attrib.vertices[3 * index.vertex_index + 1],
-          attrib.vertices[3 * index.vertex_index + 2],
-        };
-
-        vertex.texCoord = {
-          attrib.texcoords[2 * index.texcoord_index + 0],
-          1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
-        };
-
-        vertex.color = { 1.0f, 1.0f, 1.0f };
-
-        if (uniqueVertices.count(vertex) == 0)
-        {
-          uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
-          vertices.push_back(vertex);
-        }
-
-        indices.push_back(uniqueVertices[vertex]);
-      }
-    }
-  }
-
-  void createVertexBuffer()
-  {
     VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
 
     VkBuffer stagingBuffer;
@@ -853,8 +824,10 @@ class VkCloudsApp
     vkFreeMemory(m_device->GetVk(), stagingBufferMemory, nullptr);
   }
 
-  void createIndexBuffer()
+  void createBoxIndexBuffer()
   {
+    auto indices = Geometry::RefCubeIndices;
+
     VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
 
     VkBuffer stagingBuffer;
@@ -950,17 +923,17 @@ class VkCloudsApp
     vkFreeMemory(m_device->GetVk(), stagingBufferMemory, nullptr);
   }
 
-  void createSceneGraphicsDescriptorSets()
+  void createBoxGraphicsDescriptorSets()
   {
-    std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, sceneGraphicsDescriptorSetLayout);
+    std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, boxGraphicsDescriptorSetLayout);
     VkDescriptorSetAllocateInfo allocInfo {};
     allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     allocInfo.descriptorPool = m_device->getDescriptorPool();
     allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
     allocInfo.pSetLayouts = layouts.data();
 
-    sceneGraphicsDescriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
-    if (vkAllocateDescriptorSets(m_device->GetVk(), &allocInfo, sceneGraphicsDescriptorSets.data()))
+    boxGraphicsDescriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
+    if (vkAllocateDescriptorSets(m_device->GetVk(), &allocInfo, boxGraphicsDescriptorSets.data()))
     {
       throw std::runtime_error("Failed to allocate graphics descriptor sets!");
     }
@@ -975,7 +948,7 @@ class VkCloudsApp
       std::array<VkWriteDescriptorSet, 1> descriptorWrites {};
 
       descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-      descriptorWrites[0].dstSet = sceneGraphicsDescriptorSets[i];
+      descriptorWrites[0].dstSet = boxGraphicsDescriptorSets[i];
       descriptorWrites[0].dstBinding = 0;
       descriptorWrites[0].dstArrayElement = 0;
       descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -1107,7 +1080,7 @@ class VkCloudsApp
 
     vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, sceneGraphicsPipeline);
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, boxGraphicsPipeline);
 
     VkViewport viewport {};
     viewport.x = 0.0f;
@@ -1123,8 +1096,8 @@ class VkCloudsApp
     scissor.extent = swapChainExtent;
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-    // Scene rendering
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, sceneGraphicsPipeline);
+    // Box rendering
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, boxGraphicsPipeline);
 
     VkBuffer vertexBuffers[] = { vertexBuffer };
     VkDeviceSize offsets[] = { 0 };
@@ -1132,9 +1105,9 @@ class VkCloudsApp
 
     vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
-    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, sceneGraphicsPipelineLayout, 0, 1, &sceneGraphicsDescriptorSets[currentFrame], 0, nullptr);
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, boxGraphicsPipelineLayout, 0, 1, &boxGraphicsDescriptorSets[currentFrame], 0, nullptr);
 
-    //  vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+    vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(Geometry::RefCubeIndices.size()), 1, 0, 0, 0);
 
     // Particles rendering
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, particleGraphicsPipeline);
@@ -1335,7 +1308,7 @@ class VkCloudsApp
     static auto startTime = std::chrono::high_resolution_clock::now();
 
     auto currentTime = std::chrono::high_resolution_clock::now();
-    float time = 0.0f; //std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
     UniformBufferObject ubo {};
     ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(10.0f), glm::vec3(0.0f, 0.0f, 1.0f));
@@ -1371,7 +1344,7 @@ class VkCloudsApp
       vkFreeMemory(m_device->GetVk(), shaderStorageBuffersMemory[i], nullptr);
     }
 
-    vkDestroyDescriptorSetLayout(m_device->GetVk(), sceneGraphicsDescriptorSetLayout, nullptr);
+    vkDestroyDescriptorSetLayout(m_device->GetVk(), boxGraphicsDescriptorSetLayout, nullptr);
     vkDestroyDescriptorSetLayout(m_device->GetVk(), computeDescriptorSetLayout, nullptr);
 
     vkDestroyBuffer(m_device->GetVk(), vertexBuffer, nullptr);
@@ -1389,8 +1362,8 @@ class VkCloudsApp
       vkDestroyFence(m_device->GetVk(), computeInFlightFences[i], nullptr);
     }
 
-    vkDestroyPipeline(m_device->GetVk(), sceneGraphicsPipeline, nullptr);
-    vkDestroyPipelineLayout(m_device->GetVk(), sceneGraphicsPipelineLayout, nullptr);
+    vkDestroyPipeline(m_device->GetVk(), boxGraphicsPipeline, nullptr);
+    vkDestroyPipelineLayout(m_device->GetVk(), boxGraphicsPipelineLayout, nullptr);
 
     vkDestroyPipeline(m_device->GetVk(), particleGraphicsPipeline, nullptr);
     vkDestroyPipelineLayout(m_device->GetVk(), particleGraphicsPipelineLayout, nullptr);
