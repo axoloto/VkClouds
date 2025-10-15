@@ -901,8 +901,7 @@ class VkCloudsApp
     vkFreeMemory(m_device->GetVk(), stagingBufferMemory, nullptr);
   }
 
-  void
-  createBoxGraphicsDescriptorSets()
+  void createBoxGraphicsDescriptorSets()
   {
     std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, boxGraphicsDescriptorSetLayout);
     VkDescriptorSetAllocateInfo allocInfo {};

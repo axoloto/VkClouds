@@ -19,6 +19,7 @@ struct Particle
   vec4 position;
   vec4 velocity;
   vec4 color;
+  uint cellID;
 };
 
 layout(std140, binding = 1) readonly buffer ParticleSSBOIn
