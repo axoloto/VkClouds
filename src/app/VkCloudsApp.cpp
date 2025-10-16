@@ -100,8 +100,7 @@ class VkCloudsApp
   VkPipelineLayout particleGraphicsPipelineLayout;
   VkPipeline particleGraphicsPipeline;
 
-  VkPipelineLayout computePipelineLayout;
-  VkPipeline computePipeline;
+  vk::PipelineData boidsPipeline;
 
   VkBuffer vertexBuffer;
   VkDeviceMemory vertexBufferMemory;
@@ -173,7 +172,7 @@ class VkCloudsApp
     createComputeDescriptorSetLayout();
     createBoxGraphicsPipeline();
     createParticleGraphicsPipeline();
-    createComputePipeline();
+    boidsPipeline = m_device->createComputePipeline("boids.spv", "main", &computeDescriptorSetLayout);
 
     m_swapChain->createFramebuffers(renderPass);
 
@@ -374,11 +373,8 @@ class VkCloudsApp
   void createBoxGraphicsPipeline()
   {
     // shaders
-    auto vertShaderCode = readShaderFile("vert.spv");
-    auto fragShaderCode = readShaderFile("frag.spv");
-
-    VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
-    VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
+    VkShaderModule vertShaderModule = m_device->createShaderModule("vert.spv");
+    VkShaderModule fragShaderModule = m_device->createShaderModule("frag.spv");
 
     VkPipelineShaderStageCreateInfo vertShaderStageInfo {};
     vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -545,11 +541,8 @@ class VkCloudsApp
   void createParticleGraphicsPipeline()
   {
     // shaders
-    auto vertShaderCode = readShaderFile("partVert.spv");
-    auto fragShaderCode = readShaderFile("partFrag.spv");
-
-    VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
-    VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
+    VkShaderModule vertShaderModule = m_device->createShaderModule("partVert.spv");
+    VkShaderModule fragShaderModule = m_device->createShaderModule("partFrag.spv");
 
     VkPipelineShaderStageCreateInfo vertShaderStageInfo {};
     vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -712,41 +705,6 @@ class VkCloudsApp
 
     vkDestroyShaderModule(m_device->GetVk(), fragShaderModule, nullptr);
     vkDestroyShaderModule(m_device->GetVk(), vertShaderModule, nullptr);
-  }
-
-  void createComputePipeline()
-  {
-    auto partComputeCode = readShaderFile("boids.spv");
-
-    VkShaderModule partComputeModule = createShaderModule(partComputeCode);
-
-    VkPipelineShaderStageCreateInfo partComputeShaderStageInfo {};
-    partComputeShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    partComputeShaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-    partComputeShaderStageInfo.module = partComputeModule;
-    partComputeShaderStageInfo.pName = "main";
-
-    VkPipelineLayoutCreateInfo pipelineLayoutInfo {};
-    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.setLayoutCount = 1;
-    pipelineLayoutInfo.pSetLayouts = &computeDescriptorSetLayout;
-
-    if (vkCreatePipelineLayout(m_device->GetVk(), &pipelineLayoutInfo, nullptr, &computePipelineLayout) != VK_SUCCESS)
-    {
-      throw std::runtime_error("Failed to create compute pipeline layout!");
-    }
-
-    VkComputePipelineCreateInfo pipelineInfo {};
-    pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-    pipelineInfo.layout = computePipelineLayout;
-    pipelineInfo.stage = partComputeShaderStageInfo;
-
-    if (vkCreateComputePipelines(m_device->GetVk(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &computePipeline) != VK_SUCCESS)
-    {
-      throw std::runtime_error("Failed to create compute pipeline!");
-    }
-
-    vkDestroyShaderModule(m_device->GetVk(), partComputeModule, nullptr);
   }
 
   void createBoxVertexBuffer()
@@ -1118,9 +1076,9 @@ class VkCloudsApp
       throw std::runtime_error("Failed to bein recording the compute command buffer!");
     }
 
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, computePipeline);
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, boidsPipeline.first);
 
-    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, computePipelineLayout, 0, 1, &computeDescriptorSets[currentFrame], 0, nullptr);
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, boidsPipeline.second, 0, 1, &computeDescriptorSets[currentFrame], 0, nullptr);
 
     vkCmdDispatch(commandBuffer, PARTICLE_COUNT / 256, 1, 1);
 
@@ -1128,22 +1086,6 @@ class VkCloudsApp
     {
       throw std::runtime_error("Failed to record the compute command buffer!");
     }
-  }
-
-  VkShaderModule createShaderModule(const std::vector<char>& code)
-  {
-    VkShaderModuleCreateInfo createInfo {};
-    createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    createInfo.codeSize = code.size();
-    createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
-
-    VkShaderModule shaderModule;
-    if (vkCreateShaderModule(m_device->GetVk(), &createInfo, nullptr, &shaderModule))
-    {
-      throw std::runtime_error("Failed to create shader module!");
-    }
-
-    return shaderModule;
   }
 
   void mainLoop()
@@ -1346,8 +1288,8 @@ class VkCloudsApp
     vkDestroyPipeline(m_device->GetVk(), particleGraphicsPipeline, nullptr);
     vkDestroyPipelineLayout(m_device->GetVk(), particleGraphicsPipelineLayout, nullptr);
 
-    vkDestroyPipeline(m_device->GetVk(), computePipeline, nullptr);
-    vkDestroyPipelineLayout(m_device->GetVk(), computePipelineLayout, nullptr);
+    vkDestroyPipeline(m_device->GetVk(), boidsPipeline.first, nullptr);
+    vkDestroyPipelineLayout(m_device->GetVk(), boidsPipeline.second, nullptr);
 
     vkDestroyRenderPass(m_device->GetVk(), renderPass, nullptr);
 

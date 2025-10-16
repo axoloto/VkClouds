@@ -8,6 +8,8 @@
 
 namespace vk
 {
+using PipelineData = std::pair<VkPipeline, VkPipelineLayout>;
+
 class Device
 {
   public:
@@ -31,6 +33,10 @@ class Device
       VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory);
 
   void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
+
+  VkShaderModule createShaderModule(const std::string& shaderFileName);
+
+  PipelineData createComputePipeline(const std::string& shaderFileName, const std::string& shaderPassName, VkDescriptorSetLayout* descSetLayout);
 
   VkCommandBuffer beginSingleTimeCommands();
   void endSingleTimeCommandsAndSubmitOnGraphicsQueue(VkCommandBuffer commandBuffer);

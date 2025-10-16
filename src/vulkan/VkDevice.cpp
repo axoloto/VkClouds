@@ -5,6 +5,7 @@
 #include <array>
 #include <exception>
 #include <iostream>
+#include <memory>
 #include <optional>
 #include <set>
 #include <vector>
@@ -339,4 +340,58 @@ void Device::transitionImageLayout(VkImage image, VkFormat format, VkImageLayout
   endSingleTimeCommandsAndSubmitOnGraphicsQueue(commandBuffer);
 }
 
+VkShaderModule Device::createShaderModule(const std::string& shaderFileName)
+{
+  auto shaderCode = readShaderFile(shaderFileName);
+
+  VkShaderModuleCreateInfo createInfo {};
+  createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+  createInfo.codeSize = shaderCode.size();
+  createInfo.pCode = reinterpret_cast<const uint32_t*>(shaderCode.data());
+
+  VkShaderModule shaderModule;
+  if (vkCreateShaderModule(m_device, &createInfo, nullptr, &shaderModule))
+  {
+    throw std::runtime_error("Failed to create shader module!");
+  }
+
+  return shaderModule;
+}
+
+PipelineData Device::createComputePipeline(const std::string& shaderFileName, const std::string& shaderPassName, VkDescriptorSetLayout* descSetLayout)
+{
+  VkShaderModule partComputeModule = createShaderModule("boids.spv");
+
+  VkPipelineShaderStageCreateInfo computeShaderStageInfo {};
+  computeShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+  computeShaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+  computeShaderStageInfo.module = partComputeModule;
+  computeShaderStageInfo.pName = "main";
+
+  VkPipelineLayoutCreateInfo computeLayoutInfo {};
+  computeLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+  computeLayoutInfo.setLayoutCount = 1;
+  computeLayoutInfo.pSetLayouts = descSetLayout;
+
+  VkPipelineLayout computePipelineLayout;
+  if (vkCreatePipelineLayout(m_device, &computeLayoutInfo, nullptr, &computePipelineLayout) != VK_SUCCESS)
+  {
+    throw std::runtime_error("Failed to create compute pipeline layout!");
+  }
+
+  VkComputePipelineCreateInfo pipelineInfo {};
+  pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+  pipelineInfo.layout = computePipelineLayout;
+  pipelineInfo.stage = computeShaderStageInfo;
+
+  VkPipeline computePipeline;
+  if (vkCreateComputePipelines(m_device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &computePipeline) != VK_SUCCESS)
+  {
+    throw std::runtime_error("Failed to create compute pipeline!");
+  }
+
+  vkDestroyShaderModule(m_device, partComputeModule, nullptr);
+
+  return std::make_pair(computePipeline, computePipelineLayout);
+}
 }

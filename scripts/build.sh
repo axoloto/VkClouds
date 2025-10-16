@@ -56,7 +56,7 @@ printf "========================== START MODEL HANDLING ========================
 
 mkdir -p $MODEL_DIR
 
-cp "$DEV_DIR/src/models/viking_room.obj" "$MODEL_DIR/viking_room.obj"
+#cp "$DEV_DIR/src/models/viking_room.obj" "$MODEL_DIR/viking_room.obj"
 
 printf "========================== END MODEL HANDLING ============================= \n"
 
