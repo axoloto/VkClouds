@@ -2,7 +2,7 @@
 
 #include "define.glsl"
 
-#define EFFECT_RADIUS_SQUARED 1.0f
+#define EFFECT_RADIUS_SQUARED GRID_CELL_SIZE_XYZ
 #define VELOCITY_SCALE 0.5f
 #define ALIGNEMENT_SCALE 1.6f
 #define COHESION_SCALE 1.45f
@@ -30,6 +30,11 @@ layout(std140, binding = 1) readonly buffer ParticleSSBOIn
 layout(std140, binding = 2) buffer ParticleSSBOOut
 {
   Particle particlesOut[];
+};
+
+layout(std140, binding = 3) buffer StartEndPartIdSSBO
+{
+  uvec2 startEndPartID[];
 };
 
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
@@ -108,7 +113,7 @@ void main()
   // Output
   particlesOut[index].position = clampedNewPos;
   particlesOut[index].velocity = newVel;
-
+  particlesOut[index].cellID = UINT32_MAX; // reset to max, so that radix sort put them at the end if not used
   //   particlesOut[index].position = pos;
   //   particlesOut[index].velocity = vel;
 }

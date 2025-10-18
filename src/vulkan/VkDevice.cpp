@@ -85,17 +85,17 @@ void Device::createDescriptorPool()
 {
   std::array<VkDescriptorPoolSize, 3> poolSizes {};
   poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-  poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) * 2;
+  poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) * 20;
   poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-  poolSizes[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+  poolSizes[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) * 20;
   poolSizes[2].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-  poolSizes[2].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) * 2;
+  poolSizes[2].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) * 20;
 
   VkDescriptorPoolCreateInfo poolInfo {};
   poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
   poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
   poolInfo.pPoolSizes = poolSizes.data();
-  poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) * 2;
+  poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) * 20;
 
   if (vkCreateDescriptorPool(m_device, &poolInfo, nullptr, &m_descriptorPool) != VK_SUCCESS)
   {
@@ -360,13 +360,13 @@ VkShaderModule Device::createShaderModule(const std::string& shaderFileName)
 
 PipelineData Device::createComputePipeline(const std::string& shaderFileName, const std::string& shaderPassName, VkDescriptorSetLayout* descSetLayout)
 {
-  VkShaderModule partComputeModule = createShaderModule("boids.spv");
+  VkShaderModule partComputeModule = createShaderModule(shaderFileName);
 
   VkPipelineShaderStageCreateInfo computeShaderStageInfo {};
   computeShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
   computeShaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
   computeShaderStageInfo.module = partComputeModule;
-  computeShaderStageInfo.pName = "main";
+  computeShaderStageInfo.pName = shaderPassName.c_str();
 
   VkPipelineLayoutCreateInfo computeLayoutInfo {};
   computeLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
