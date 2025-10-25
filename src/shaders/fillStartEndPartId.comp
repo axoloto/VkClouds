@@ -1,0 +1,52 @@
+#version 450
+
+#include "define.glsl"
+#include "grid_utils.glsl"
+#include "particle_utils.glsl"
+
+layout(std140, binding = 0) buffer ParticleSSBO
+{
+  Particle particles[];
+};
+
+layout(std430, binding = 1) buffer StartEndPartIdSSBO
+{
+  uvec2 cStartEndPartIds[];
+};
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+/*
+  Find first/end particle index for each cell,
+  all particles have been sorted by cellID already through radix sort.
+*/
+void main()
+{
+  uint index = gl_GlobalInvocationID.x;
+  uint lastIndex = gl_NumWorkGroups.x * gl_WorkGroupSize.x;
+
+  const uint currentCellID = particles[index].cellID;
+
+  if (currentCellID < GRID_NUM_CELLS)
+  {
+    if (index > 0)
+    {
+      const uint leftCellID = particles[index - 1].cellID;
+      if (currentCellID != leftCellID)
+      {
+        // Found start
+        cStartEndPartIds[currentCellID].x = index;
+      }
+    }
+
+    if (index != lastIndex)
+    {
+      const uint rightCellID = particles[index + 1].cellID;
+      if (currentCellID != rightCellID)
+      {
+        // Found end
+        cStartEndPartIds[currentCellID].y = index;
+      }
+    }
+  }
+}

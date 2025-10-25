@@ -1,0 +1,33 @@
+#version 450
+
+#include "define.glsl"
+#include "grid_utils.glsl"
+#include "particle_utils.glsl"
+
+layout(std140, binding = 0) buffer ParticleSSBO
+{
+  Particle particles[];
+};
+
+layout(std430, binding = 1) buffer StartEndPartIdSSBO
+{
+  uvec2 cStartEndPartIds[];
+};
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+/* 
+  Adjust last partID for each cell, capping it with max number of parts in cell in simplified mode.
+*/
+void main()
+{
+  uint index = gl_GlobalInvocationID.x;
+
+  const uvec2 startEnd = cStartEndPartIds[index];
+
+  // cap end part index, some particles will not be considered when looking through particles in the cell for perf reason
+  if (startEnd.y > startEnd.x + NUM_MAX_PARTS_IN_CELL)
+  {
+    cStartEndPartIds[index].y = startEnd.x + NUM_MAX_PARTS_IN_CELL;
+  }
+}
