@@ -36,14 +36,17 @@ printf "========================== START GLSLC ============================= \n"
 
 mkdir -p $SHADER_DIR
 
-"$GLSLC_DIR/glslc" "$DEV_DIR/src/shaders/shader.vert" -o "$SHADER_DIR/vert.spv"
-"$GLSLC_DIR/glslc" "$DEV_DIR/src/shaders/shader.frag" -o "$SHADER_DIR/frag.spv"
-#"$GLSLC_DIR/glslc" "$DEV_DIR/src/shaders/boids.comp" -o "$SHADER_DIR/boids.spv"
-#"$GLSLC_DIR/glslc" "$DEV_DIR/src/shaders/resetStartEndCell.comp" -o "$SHADER_DIR/resetStartEndCell.spv"
-#"$GLSLC_DIR/glslc" "$DEV_DIR/src/shaders/fillCellIds.comp" -o "$SHADER_DIR/fillCellIds.spv"
-#"GLSLC_DIR/glslc" "$DEV_DIR/src/shaders/fillCellIds.comp" -o "$SHADER_DIR/fillCellIds.spv"
-"$GLSLC_DIR/glslc" "$DEV_DIR/src/shaders/particle.vert" -o "$SHADER_DIR/partVert.spv"
-"$GLSLC_DIR/glslc" "$DEV_DIR/src/shaders/particle.frag" -o "$SHADER_DIR/partFrag.spv"
+for f in "$DEV_DIR/src/shaders/"*.vert; do
+    filename=$(basename "$f" .vert)
+    echo $filename
+    "$GLSLC_DIR/glslc" "$f" -o "$SHADER_DIR/${filename}Vert.spv"
+done
+
+for f in "$DEV_DIR/src/shaders/"*.frag; do
+    filename=$(basename "$f" .frag)
+    echo $filename
+    "$GLSLC_DIR/glslc" "$f" -o "$SHADER_DIR/${filename}Frag.spv"
+done
 
 for f in "$DEV_DIR/src/shaders/"*.comp; do
     filename=$(basename "$f" .comp)

@@ -1,6 +1,7 @@
 #version 450
 
 #include "define.glsl"
+#include "particle_utils.glsl"
 
 #define EFFECT_RADIUS_SQUARED GRID_CELL_SIZE_XYZ
 #define VELOCITY_SCALE 0.5f
@@ -14,14 +15,6 @@ layout(binding = 0) uniform ParameterUBO
 }
 ubo;
 
-struct Particle
-{
-  vec4 position;
-  vec4 velocity;
-  vec4 color;
-  uint cellID;
-};
-
 layout(std140, binding = 1) readonly buffer ParticleSSBOIn
 {
   Particle particlesIn[];
@@ -32,9 +25,9 @@ layout(std140, binding = 2) buffer ParticleSSBOOut
   Particle particlesOut[];
 };
 
-layout(std140, binding = 3) buffer StartEndPartIdSSBO
+layout(std430, binding = 3) buffer StartEndPartIdSSBO
 {
-  uvec2 startEndPartID[];
+  uvec4 startEndPartID[];
 };
 
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
@@ -44,17 +37,17 @@ void main()
   uint index = gl_GlobalInvocationID.x;
 
   Particle particleIn = particlesIn[index];
-  const vec4 pos = particleIn.position;
-  const vec4 vel = particleIn.velocity;
+  const vec3 pos = particleIn.position;
+  const vec3 vel = particleIn.velocity;
 
-  vec4 newAcc = NULL_VEC4;
-  vec4 averageBoidsPos = NULL_VEC4;
-  vec4 averageBoidsVel = NULL_VEC4;
-  vec4 repulseHeading = NULL_VEC4;
+  vec3 newAcc = NULL_VEC3;
+  vec3 averageBoidsPos = NULL_VEC3;
+  vec3 averageBoidsVel = NULL_VEC3;
+  vec3 repulseHeading = NULL_VEC3;
 
   float squaredDist = 0.0f;
-  vec4 posN = NULL_VEC4;
-  vec4 vec = NULL_VEC4;
+  vec3 posN = NULL_VEC3;
+  vec3 vec = NULL_VEC3;
 
   uint count = 0;
   uint totalNbElements = gl_NumWorkGroups.x * gl_WorkGroupSize.x;
@@ -93,22 +86,21 @@ void main()
   }
 
   // Integrate acceleration to obtain velocity
-  vec4 newVel = vel + newAcc * ubo.deltaTime;
+  vec3 newVel = vel + newAcc * ubo.deltaTime;
   float newVelNorm = clamp(length(newVel), 0.2 * VELOCITY_SCALE, VELOCITY_SCALE);
   newVel = normalize(newVel) * newVelNorm;
 
   // Integrate velocity to obtain position before clamping to area boundaries
-  vec4 newPos = pos + newVel * ubo.deltaTime;
+  vec3 newPos = pos + newVel * ubo.deltaTime;
 
   // Wall boundary condition
   // If clamped != newPos, we hit a wall flip movement and damp velocity
-  vec4 clampedNewPos = clamp(newPos, MIN_BOUNDS, MAX_BOUNDS);
+  vec3 clampedNewPos = clamp(newPos, MIN_BOUNDS, MAX_BOUNDS);
   bvec3 collided = notEqual(clampedNewPos.xyz, newPos.xyz);
   if (any(collided))
   {
     newVel *= -0.5;
   }
-  clampedNewPos.w = 1.0;
 
   // Output
   particlesOut[index].position = clampedNewPos;

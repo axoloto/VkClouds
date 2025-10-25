@@ -88,11 +88,11 @@ class VkCloudsApp
 
   VkSurfaceKHR surface;
 
-  VkDescriptorSetLayout boxGraphicsDescriptorSetLayout;
+  VkDescriptorSetLayout graphicsDescriptorSetLayout;
   VkDescriptorSetLayout boidsComputeDescriptorSetLayout;
   VkDescriptorSetLayout cellIdComputeDescriptorSetLayout;
 
-  std::vector<VkDescriptorSet> boxGraphicsDescriptorSets;
+  std::vector<VkDescriptorSet> graphicsDescriptorSets;
   std::vector<VkDescriptorSet> boidsComputeDescriptorSets;
   std::vector<VkDescriptorSet> cellIdComputeDescriptorSets;
 
@@ -100,6 +100,9 @@ class VkCloudsApp
 
   VkPipelineLayout boxGraphicsPipelineLayout;
   VkPipeline boxGraphicsPipeline;
+
+  VkPipelineLayout gridGraphicsPipelineLayout;
+  VkPipeline gridGraphicsPipeline;
 
   VkPipelineLayout particleGraphicsPipelineLayout;
   VkPipeline particleGraphicsPipeline;
@@ -110,10 +113,15 @@ class VkCloudsApp
   vk::PipelineData adjustEndPartIdCompPipeline;
   vk::PipelineData fillCellIdsCompPipeline;
 
-  VkBuffer vertexBuffer;
-  VkDeviceMemory vertexBufferMemory;
-  VkBuffer indexBuffer;
-  VkDeviceMemory indexBufferMemory;
+  VkBuffer boxVertexBuffer;
+  VkDeviceMemory boxVertexBufferMemory;
+  VkBuffer boxIndexBuffer;
+  VkDeviceMemory boxIndexBufferMemory;
+
+  VkBuffer gridVertexBuffer;
+  VkDeviceMemory gridVertexBufferMemory;
+  VkBuffer gridIndexBuffer;
+  VkDeviceMemory gridIndexBufferMemory;
 
   uint32_t currentFrame = 0;
 
@@ -182,7 +190,9 @@ class VkCloudsApp
     createBoidsComputeDescriptorSetLayout();
     createCellIdComputeDescriptorSetLayout();
     createBoxGraphicsPipeline();
+    createGridGraphicsPipeline();
     createParticleGraphicsPipeline();
+
     boidsCompPipeline = m_device->createComputePipeline("boids.spv", "main", &boidsComputeDescriptorSetLayout);
     fillCellIdsCompPipeline = m_device->createComputePipeline("fillCellIds.spv", "main", &cellIdComputeDescriptorSetLayout);
     resetStartEndPartIdCompPipeline = m_device->createComputePipeline("resetStartEndPartId.spv", "main", &cellIdComputeDescriptorSetLayout);
@@ -193,10 +203,12 @@ class VkCloudsApp
 
     createBoxVertexBuffer();
     createBoxIndexBuffer();
+    createGridVertexBuffer();
+    createGridIndexBuffer();
     createUniformBuffers();
     createParticleShaderStorageBuffers();
     createStartEndParticleIdShaderStorageBuffers();
-    createBoxGraphicsDescriptorSets();
+    createGraphicsDescriptorSets();
     createBoidsComputeDescriptorSets();
     createCellIdComputeDescriptorSets();
     createSyncObjects();
@@ -339,13 +351,20 @@ class VkCloudsApp
     uboLayoutBinding.pImmutableSamplers = nullptr;
     uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
-    std::array<VkDescriptorSetLayoutBinding, 1> bindings = { uboLayoutBinding };
+    VkDescriptorSetLayoutBinding ssboStartEndParticleIdLayoutBinding {};
+    ssboStartEndParticleIdLayoutBinding.binding = 1;
+    ssboStartEndParticleIdLayoutBinding.descriptorCount = 1;
+    ssboStartEndParticleIdLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    ssboStartEndParticleIdLayoutBinding.pImmutableSamplers = nullptr;
+    ssboStartEndParticleIdLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+    std::array<VkDescriptorSetLayoutBinding, 2> bindings = { uboLayoutBinding, ssboStartEndParticleIdLayoutBinding };
     VkDescriptorSetLayoutCreateInfo layoutInfo {};
     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
     layoutInfo.pBindings = bindings.data();
 
-    if (vkCreateDescriptorSetLayout(m_device->GetVk(), &layoutInfo, nullptr, &boxGraphicsDescriptorSetLayout) != VK_SUCCESS)
+    if (vkCreateDescriptorSetLayout(m_device->GetVk(), &layoutInfo, nullptr, &graphicsDescriptorSetLayout) != VK_SUCCESS)
     {
       throw std::runtime_error("Failed to create graphics descriptor set layout!");
     }
@@ -426,8 +445,8 @@ class VkCloudsApp
   void createBoxGraphicsPipeline()
   {
     // shaders
-    VkShaderModule vertShaderModule = m_device->createShaderModule("vert.spv");
-    VkShaderModule fragShaderModule = m_device->createShaderModule("frag.spv");
+    VkShaderModule vertShaderModule = m_device->createShaderModule("boxVert.spv");
+    VkShaderModule fragShaderModule = m_device->createShaderModule("boxFrag.spv");
 
     VkPipelineShaderStageCreateInfo vertShaderStageInfo {};
     vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -554,7 +573,7 @@ class VkCloudsApp
     VkPipelineLayoutCreateInfo pipelineLayoutInfo {};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pipelineLayoutInfo.setLayoutCount = 1;
-    pipelineLayoutInfo.pSetLayouts = &boxGraphicsDescriptorSetLayout;
+    pipelineLayoutInfo.pSetLayouts = &graphicsDescriptorSetLayout;
     pipelineLayoutInfo.pushConstantRangeCount = 0;
     pipelineLayoutInfo.pPushConstantRanges = nullptr;
 
@@ -591,11 +610,179 @@ class VkCloudsApp
     vkDestroyShaderModule(m_device->GetVk(), vertShaderModule, nullptr);
   }
 
+  void createGridGraphicsPipeline()
+  {
+    // shaders
+    VkShaderModule vertShaderModule = m_device->createShaderModule("gridVert.spv");
+    VkShaderModule fragShaderModule = m_device->createShaderModule("gridFrag.spv");
+
+    VkPipelineShaderStageCreateInfo vertShaderStageInfo {};
+    vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+    vertShaderStageInfo.module = vertShaderModule;
+    vertShaderStageInfo.pName = "main";
+
+    VkPipelineShaderStageCreateInfo fragShaderStageInfo {};
+    fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    fragShaderStageInfo.module = fragShaderModule;
+    fragShaderStageInfo.pName = "main";
+
+    VkPipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo, fragShaderStageInfo };
+
+    // vertex buffer
+    auto bindingDescription = Vertex::getBindingDescription();
+    auto attributeDescriptions = Vertex::getAttributeDescriptions();
+
+    VkPipelineVertexInputStateCreateInfo vertexInputInfo {};
+    vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vertexInputInfo.vertexBindingDescriptionCount = 1;
+    vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+    vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
+    vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
+
+    // input assembly
+    VkPipelineInputAssemblyStateCreateInfo inputAssembly {};
+    inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+    inputAssembly.primitiveRestartEnable = VK_FALSE;
+
+    // dynamic states
+    std::vector<VkDynamicState> dynamicStates = {
+      VK_DYNAMIC_STATE_VIEWPORT,
+      VK_DYNAMIC_STATE_SCISSOR
+    };
+
+    VkPipelineDynamicStateCreateInfo dynamicState {};
+    dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
+    dynamicState.pDynamicStates = dynamicStates.data();
+
+    VkPipelineViewportStateCreateInfo viewportState {};
+    viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    viewportState.viewportCount = 1;
+    viewportState.scissorCount = 1;
+
+    VkPipelineDepthStencilStateCreateInfo depthStencil {};
+    depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    depthStencil.depthTestEnable = VK_TRUE;
+    depthStencil.depthWriteEnable = VK_TRUE;
+    depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+    depthStencil.depthBoundsTestEnable = VK_FALSE;
+    depthStencil.minDepthBounds = 0.0f; // optional
+    depthStencil.maxDepthBounds = 1.0f; // optional
+    depthStencil.stencilTestEnable = VK_FALSE;
+    depthStencil.front = {}; // optional
+    depthStencil.back = {}; // optional
+
+    // viewport
+    // region of the framebuffer that the output will be rendered to
+    VkViewport viewport {};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = (float)m_swapChain->GetExtent().width;
+    viewport.height = (float)m_swapChain->GetExtent().height;
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+
+    // scissor rectangle - define in which region pixels will stored,
+    // any pixel outside will be discarded by the rasterizer
+    VkRect2D scissor {};
+    scissor.offset = { 0, 0 };
+    scissor.extent = m_swapChain->GetExtent();
+
+    // rasterizer
+    VkPipelineRasterizationStateCreateInfo rasterizer {};
+    rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    rasterizer.depthClampEnable = VK_FALSE;
+    rasterizer.rasterizerDiscardEnable = VK_FALSE;
+    rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+    rasterizer.lineWidth = 1.0f;
+    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+    rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    rasterizer.depthBiasEnable = VK_FALSE;
+    rasterizer.depthBiasConstantFactor = 0.0f;
+    rasterizer.depthBiasClamp = 0.0f;
+    rasterizer.depthBiasSlopeFactor = 0.0f;
+
+    // msaa
+    VkPipelineMultisampleStateCreateInfo multisampling {};
+    multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    multisampling.sampleShadingEnable = VK_FALSE;
+    multisampling.rasterizationSamples = m_physicalDevice->GetMsaaSamples();
+    multisampling.minSampleShading = 1.0f;
+    multisampling.pSampleMask = nullptr;
+    multisampling.alphaToCoverageEnable = VK_FALSE;
+    multisampling.alphaToOneEnable = VK_FALSE;
+
+    // color blending
+    VkPipelineColorBlendAttachmentState colorBlendAttachment {};
+    colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    colorBlendAttachment.blendEnable = VK_FALSE;
+    colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+    colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+    colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+    colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+    colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+
+    VkPipelineColorBlendStateCreateInfo colorBlending {};
+    colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    colorBlending.logicOpEnable = VK_FALSE;
+    colorBlending.logicOp = VK_LOGIC_OP_COPY;
+    colorBlending.attachmentCount = 1;
+    colorBlending.pAttachments = &colorBlendAttachment;
+    colorBlending.blendConstants[0] = 0.0f;
+    colorBlending.blendConstants[1] = 0.0f;
+    colorBlending.blendConstants[2] = 0.0f;
+    colorBlending.blendConstants[3] = 0.0f;
+
+    // pipeline layout
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo {};
+    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipelineLayoutInfo.setLayoutCount = 1;
+    pipelineLayoutInfo.pSetLayouts = &graphicsDescriptorSetLayout;
+    pipelineLayoutInfo.pushConstantRangeCount = 0;
+    pipelineLayoutInfo.pPushConstantRanges = nullptr;
+
+    if (vkCreatePipelineLayout(m_device->GetVk(), &pipelineLayoutInfo, nullptr, &gridGraphicsPipelineLayout) != VK_SUCCESS)
+    {
+      throw std::runtime_error("Failed to create pipeline layout!");
+    }
+
+    // graphics pipeline
+    VkGraphicsPipelineCreateInfo pipelineInfo {};
+    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pipelineInfo.stageCount = 2;
+    pipelineInfo.pStages = shaderStages;
+    pipelineInfo.pVertexInputState = &vertexInputInfo;
+    pipelineInfo.pInputAssemblyState = &inputAssembly;
+    pipelineInfo.pViewportState = &viewportState;
+    pipelineInfo.pRasterizationState = &rasterizer;
+    pipelineInfo.pMultisampleState = &multisampling;
+    pipelineInfo.pDepthStencilState = &depthStencil;
+    pipelineInfo.pColorBlendState = &colorBlending;
+    pipelineInfo.pDynamicState = &dynamicState;
+    pipelineInfo.layout = boxGraphicsPipelineLayout;
+    pipelineInfo.renderPass = renderPass;
+    pipelineInfo.subpass = 0;
+    pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
+    pipelineInfo.basePipelineIndex = -1;
+
+    if (vkCreateGraphicsPipelines(m_device->GetVk(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &gridGraphicsPipeline) != VK_SUCCESS)
+    {
+      throw std::runtime_error("Failed to create the graphics pipeline!");
+    }
+
+    vkDestroyShaderModule(m_device->GetVk(), fragShaderModule, nullptr);
+    vkDestroyShaderModule(m_device->GetVk(), vertShaderModule, nullptr);
+  }
+
   void createParticleGraphicsPipeline()
   {
     // shaders
-    VkShaderModule vertShaderModule = m_device->createShaderModule("partVert.spv");
-    VkShaderModule fragShaderModule = m_device->createShaderModule("partFrag.spv");
+    VkShaderModule vertShaderModule = m_device->createShaderModule("particleVert.spv");
+    VkShaderModule fragShaderModule = m_device->createShaderModule("particleFrag.spv");
 
     VkPipelineShaderStageCreateInfo vertShaderStageInfo {};
     vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -723,7 +910,7 @@ class VkCloudsApp
     VkPipelineLayoutCreateInfo pipelineLayoutInfo {};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pipelineLayoutInfo.setLayoutCount = 1;
-    pipelineLayoutInfo.pSetLayouts = &boxGraphicsDescriptorSetLayout;
+    pipelineLayoutInfo.pSetLayouts = &graphicsDescriptorSetLayout;
     pipelineLayoutInfo.pushConstantRangeCount = 0;
     pipelineLayoutInfo.pPushConstantRanges = nullptr;
 
@@ -794,9 +981,9 @@ class VkCloudsApp
     memcpy(data, vertices.data(), (size_t)bufferSize);
     vkUnmapMemory(m_device->GetVk(), stagingBufferMemory);
 
-    m_device->createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertexBuffer, vertexBufferMemory);
+    m_device->createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, boxVertexBuffer, boxVertexBufferMemory);
 
-    m_device->copyBuffer(stagingBuffer, vertexBuffer, bufferSize);
+    m_device->copyBuffer(stagingBuffer, boxVertexBuffer, bufferSize);
 
     vkDestroyBuffer(m_device->GetVk(), stagingBuffer, nullptr);
     vkFreeMemory(m_device->GetVk(), stagingBufferMemory, nullptr);
@@ -817,9 +1004,113 @@ class VkCloudsApp
     memcpy(data, indices.data(), (size_t)bufferSize);
     vkUnmapMemory(m_device->GetVk(), stagingBufferMemory);
 
-    m_device->createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, indexBuffer, indexBufferMemory);
+    m_device->createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, boxIndexBuffer, boxIndexBufferMemory);
 
-    m_device->copyBuffer(stagingBuffer, indexBuffer, bufferSize);
+    m_device->copyBuffer(stagingBuffer, boxIndexBuffer, bufferSize);
+
+    vkDestroyBuffer(m_device->GetVk(), stagingBuffer, nullptr);
+    vkFreeMemory(m_device->GetVk(), stagingBufferMemory, nullptr);
+  }
+
+  void createGridVertexBuffer()
+  {
+    Geometry::Vertex3D cellDims;
+    cellDims[0] = (float)2.0f / 8.0f;
+    cellDims[1] = (float)2.0f / 8.0f;
+    cellDims[2] = (float)2.0f / 8.0f;
+
+    auto localCellCoords = Geometry::RefCubeVertices;
+    for (auto& vertex : localCellCoords)
+    {
+      float x = vertex[0] * cellDims[0] * 0.5f;
+      float y = vertex[1] * cellDims[1] * 0.5f;
+      float z = vertex[2] * cellDims[2] * 0.5f;
+      vertex = { x, y, z };
+    }
+
+    size_t centerIndex = 0;
+    size_t numCells = 8 * 8 * 8;
+    Geometry::Vertex3D firstPos;
+    firstPos[0] = -(float)2.0f / 2.0f + 0.5f * cellDims[0];
+    firstPos[1] = -(float)2.0f / 2.0f + 0.5f * cellDims[1];
+    firstPos[2] = -(float)2.0f / 2.0f + 0.5f * cellDims[2];
+    std::vector<Geometry::Vertex3D> globalCellCenterCoords(numCells);
+    for (int x = 0; x < 8; ++x)
+    {
+      float xCoord = firstPos[0] + x * cellDims[0];
+      for (int y = 0; y < 8; ++y)
+      {
+        float yCoord = firstPos[1] + y * cellDims[1];
+        for (int z = 0; z < 8; ++z)
+        {
+          float zCoord = firstPos[2] + z * cellDims[2];
+          globalCellCenterCoords.at(centerIndex++) = { xCoord, yCoord, zCoord };
+        }
+      }
+    }
+
+    size_t cornerIndex = 0;
+    std::vector<Vertex> vertices(numCells * 8);
+    for (const auto& centerCoords : globalCellCenterCoords)
+    {
+      for (const auto& cornerCoords : localCellCoords)
+      {
+        vertices.at(cornerIndex).pos.x = cornerCoords[0] + centerCoords[0];
+        vertices.at(cornerIndex).pos.y = cornerCoords[1] + centerCoords[1];
+        vertices.at(cornerIndex).pos.z = cornerCoords[2] + centerCoords[2];
+        ++cornerIndex;
+      }
+    }
+
+    VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
+
+    VkBuffer stagingBuffer;
+    VkDeviceMemory stagingBufferMemory;
+    m_device->createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
+
+    // Mapping the buffer memory into CPU accessible memory
+    // Transfer to GPU is only guaranteed to be complete as of the next call to vkQueueSubmit
+    void* data;
+    vkMapMemory(m_device->GetVk(), stagingBufferMemory, 0, bufferSize, 0, &data);
+    memcpy(data, vertices.data(), (size_t)bufferSize);
+    vkUnmapMemory(m_device->GetVk(), stagingBufferMemory);
+
+    m_device->createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, gridVertexBuffer, gridVertexBufferMemory);
+
+    m_device->copyBuffer(stagingBuffer, gridVertexBuffer, bufferSize);
+
+    vkDestroyBuffer(m_device->GetVk(), stagingBuffer, nullptr);
+    vkFreeMemory(m_device->GetVk(), stagingBufferMemory, nullptr);
+  }
+
+  void createGridIndexBuffer()
+  {
+    size_t index = 0;
+    uint32_t globalOffset = 0;
+    std::vector<uint32_t> indices(8 * 8 * 8 * 24);
+    for (int i = 0; i < 512; ++i)
+    {
+      for (const auto& localIndex : Geometry::RefCubeIndices)
+      {
+        indices.at(index++) = localIndex + globalOffset;
+      }
+      globalOffset += 8;
+    }
+
+    VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
+
+    VkBuffer stagingBuffer;
+    VkDeviceMemory stagingBufferMemory;
+    m_device->createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
+
+    void* data;
+    vkMapMemory(m_device->GetVk(), stagingBufferMemory, 0, bufferSize, 0, &data);
+    memcpy(data, indices.data(), (size_t)bufferSize);
+    vkUnmapMemory(m_device->GetVk(), stagingBufferMemory);
+
+    m_device->createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, gridIndexBuffer, gridIndexBufferMemory);
+
+    m_device->copyBuffer(stagingBuffer, gridIndexBuffer, bufferSize);
 
     vkDestroyBuffer(m_device->GetVk(), stagingBuffer, nullptr);
     vkFreeMemory(m_device->GetVk(), stagingBufferMemory, nullptr);
@@ -884,8 +1175,8 @@ class VkCloudsApp
       float x = r * cos(theta);
       float y = r * sin(theta);
       float z = r * (sin(theta) + cos(theta)) / 2.0;
-      particle.position = glm::vec4(particlePositions[i], 1.0);
-      particle.velocity = glm::normalize(glm::vec4(particlePositions[i], 0) * 0.00025f);
+      particle.position = particlePositions[i];
+      particle.velocity = glm::normalize(particlePositions[i] * 0.00025f);
       particle.color = glm::vec4(rndDist(rndEngine), rndDist(rndEngine), rndDist(rndEngine), 1.0f);
       particle.cellID = UINT32_MAX;
       i++;
@@ -923,9 +1214,9 @@ class VkCloudsApp
     startEndParticleIdShaderStorageBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
 
     std::array<glm::uvec2, GRID_SIZE> startEndParticleIds;
-    std::fill_n(startEndParticleIds.begin(), GRID_SIZE, glm::uvec2(1, 0));
+    std::fill_n(startEndParticleIds.begin(), GRID_SIZE, glm::uvec2(0, 0));
 
-    VkDeviceSize bufferSize = sizeof(glm::uvec2) * PARTICLE_COUNT;
+    VkDeviceSize bufferSize = sizeof(glm::uvec2) * GRID_SIZE;
 
     VkBuffer stagingBuffer;
     VkDeviceMemory stagingBufferMemory;
@@ -951,17 +1242,17 @@ class VkCloudsApp
     vkFreeMemory(m_device->GetVk(), stagingBufferMemory, nullptr);
   }
 
-  void createBoxGraphicsDescriptorSets()
+  void createGraphicsDescriptorSets()
   {
-    std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, boxGraphicsDescriptorSetLayout);
+    std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, graphicsDescriptorSetLayout);
     VkDescriptorSetAllocateInfo allocInfo {};
     allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     allocInfo.descriptorPool = m_device->getDescriptorPool();
     allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
     allocInfo.pSetLayouts = layouts.data();
 
-    boxGraphicsDescriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
-    if (vkAllocateDescriptorSets(m_device->GetVk(), &allocInfo, boxGraphicsDescriptorSets.data()))
+    graphicsDescriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
+    if (vkAllocateDescriptorSets(m_device->GetVk(), &allocInfo, graphicsDescriptorSets.data()))
     {
       throw std::runtime_error("Failed to allocate graphics descriptor sets!");
     }
@@ -973,15 +1264,28 @@ class VkCloudsApp
       bufferInfo.offset = 0;
       bufferInfo.range = sizeof(UniformBufferObject);
 
-      std::array<VkWriteDescriptorSet, 1> descriptorWrites {};
+      VkDescriptorBufferInfo storageBufferInfoStartEndParticleId {};
+      storageBufferInfoStartEndParticleId.buffer = startEndParticleIdShaderStorageBuffers[i];
+      storageBufferInfoStartEndParticleId.offset = 0;
+      storageBufferInfoStartEndParticleId.range = sizeof(glm::uvec2) * GRID_SIZE;
+
+      std::array<VkWriteDescriptorSet, 2> descriptorWrites {};
 
       descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-      descriptorWrites[0].dstSet = boxGraphicsDescriptorSets[i];
+      descriptorWrites[0].dstSet = graphicsDescriptorSets[i];
       descriptorWrites[0].dstBinding = 0;
       descriptorWrites[0].dstArrayElement = 0;
       descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
       descriptorWrites[0].descriptorCount = 1;
       descriptorWrites[0].pBufferInfo = &bufferInfo;
+
+      descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+      descriptorWrites[1].dstSet = graphicsDescriptorSets[i];
+      descriptorWrites[1].dstBinding = 1;
+      descriptorWrites[1].dstArrayElement = 0;
+      descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+      descriptorWrites[1].descriptorCount = 1;
+      descriptorWrites[1].pBufferInfo = &storageBufferInfoStartEndParticleId;
 
       vkUpdateDescriptorSets(m_device->GetVk(), static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
     }
@@ -1170,8 +1474,6 @@ class VkCloudsApp
 
     vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, boxGraphicsPipeline);
-
     VkViewport viewport {};
     viewport.x = 0.0f;
     viewport.y = 0.0f;
@@ -1186,18 +1488,30 @@ class VkCloudsApp
     scissor.extent = swapChainExtent;
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
+    VkDeviceSize offsets[] = { 0 };
+
     // Box rendering
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, boxGraphicsPipeline);
 
-    VkBuffer vertexBuffers[] = { vertexBuffer };
-    VkDeviceSize offsets[] = { 0 };
-    vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+    VkBuffer boxVertexBuffers[] = { boxVertexBuffer };
+    vkCmdBindVertexBuffers(commandBuffer, 0, 1, boxVertexBuffers, offsets);
 
-    vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+    vkCmdBindIndexBuffer(commandBuffer, boxIndexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
-    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, boxGraphicsPipelineLayout, 0, 1, &boxGraphicsDescriptorSets[currentFrame], 0, nullptr);
+    //Binding desc sets only once as they are shared across shaders
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, boxGraphicsPipelineLayout, 0, 1, &graphicsDescriptorSets[currentFrame], 0, nullptr);
 
     vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(Geometry::RefCubeIndices.size()), 1, 0, 0, 0);
+
+    // Grid rendering
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, gridGraphicsPipeline);
+
+    VkBuffer gridVertexBuffers[] = { gridVertexBuffer };
+    vkCmdBindVertexBuffers(commandBuffer, 0, 1, gridVertexBuffers, offsets);
+
+    vkCmdBindIndexBuffer(commandBuffer, gridIndexBuffer, 0, VK_INDEX_TYPE_UINT32);
+
+    vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(GRID_SIZE * Geometry::RefCubeIndices.size()), 1, 0, 0, 0);
 
     // Particles rendering
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, particleGraphicsPipeline);
@@ -1230,8 +1544,10 @@ class VkCloudsApp
       throw std::runtime_error("Failed to bein recording the compute command buffer!");
     }
 
+    // TODO: use a vkBufferMemoryBarrier for more granularity and better perf
     VkMemoryBarrier memoryBarrier;
     memoryBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+    memoryBarrier.pNext = nullptr;
     memoryBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
     memoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
 
@@ -1253,7 +1569,7 @@ class VkCloudsApp
 
     vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memoryBarrier, 0, nullptr, 0, nullptr);
 
-    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, fillCellIdsCompPipeline.second, 0, 1, &boidsComputeDescriptorSets[currentFrame], 0, nullptr);
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, fillCellIdsCompPipeline.second, 0, 1, &cellIdComputeDescriptorSets[currentFrame], 0, nullptr);
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, fillCellIdsCompPipeline.first);
     vkCmdDispatch(commandBuffer, PARTICLE_COUNT / 256, 1, 1);
 
@@ -1445,14 +1761,14 @@ class VkCloudsApp
       vkFreeMemory(m_device->GetVk(), particleShaderStorageBuffersMemory[i], nullptr);
     }
 
-    vkDestroyDescriptorSetLayout(m_device->GetVk(), boxGraphicsDescriptorSetLayout, nullptr);
+    vkDestroyDescriptorSetLayout(m_device->GetVk(), graphicsDescriptorSetLayout, nullptr);
     vkDestroyDescriptorSetLayout(m_device->GetVk(), boidsComputeDescriptorSetLayout, nullptr);
 
-    vkDestroyBuffer(m_device->GetVk(), vertexBuffer, nullptr);
-    vkFreeMemory(m_device->GetVk(), vertexBufferMemory, nullptr);
+    vkDestroyBuffer(m_device->GetVk(), boxVertexBuffer, nullptr);
+    vkFreeMemory(m_device->GetVk(), boxVertexBufferMemory, nullptr);
 
-    vkDestroyBuffer(m_device->GetVk(), indexBuffer, nullptr);
-    vkFreeMemory(m_device->GetVk(), indexBufferMemory, nullptr);
+    vkDestroyBuffer(m_device->GetVk(), boxIndexBuffer, nullptr);
+    vkFreeMemory(m_device->GetVk(), boxIndexBufferMemory, nullptr);
 
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
     {
