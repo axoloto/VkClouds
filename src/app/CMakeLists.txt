@@ -13,6 +13,6 @@ find_package(glfw3 REQUIRED)
 
 add_subdirectory(imgui_backend)
 
-target_link_libraries(VkCloudsApp PRIVATE vulkan utils imgui_backend glfw stb::stb tinyobjloader::tinyobjloader)
+target_link_libraries(VkCloudsApp PRIVATE graphics physics vulkan utils imgui_backend glfw stb::stb tinyobjloader::tinyobjloader)
 
 install(TARGETS VkCloudsApp RUNTIME DESTINATION bin)

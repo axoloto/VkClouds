@@ -1,3 +1,5 @@
 add_subdirectory(utils)
 add_subdirectory(vulkan)
+add_subdirectory(physics)
+add_subdirectory(graphics)
 add_subdirectory(app)

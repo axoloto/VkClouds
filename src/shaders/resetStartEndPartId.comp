@@ -20,5 +20,5 @@ void main()
 {
   uint index = gl_GlobalInvocationID.x;
 
-  cStartEndPartIds[index] = uvec2(0, 0);
+  cStartEndPartIds[index] = uvec2(0, 1);
 }
